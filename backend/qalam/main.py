@@ -146,6 +146,7 @@ def create_app() -> FastAPI:
         return {
             "id": page_id,
             "lines": len(prepared.lines),
+            "empty": sum(1 for taken in prepared.occupied if not taken),
             "straightened": prepared.found_page,
             "preview": preview,
             "width": int(prepared.image.shape[1]),

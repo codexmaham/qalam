@@ -93,26 +93,22 @@ def _blit(page: Image.Image, mask: np.ndarray, x: int, y: int, rgb: tuple[int, i
     page.alpha_composite(image.crop((src_x, src_y, src_x + crop_w, src_y + crop_h)), (dest_x, dest_y))
 
 
-def _multiply(page: Image.Image, overlay: Image.Image) -> None:
+def _multiply(page: Image.Image, overlay: Image.Image, textured: bool = False) -> None:
     base = np.array(page).astype(np.float32)
     over = np.array(overlay).astype(np.float32)
     alpha = over[:, :, 3:4] / 255.0
+    if textured:
+        height, width = alpha.shape[:2]
+        xs = np.arange(width, dtype=np.float32)
+        ys = np.arange(height, dtype=np.float32)
+        # Deterministic paper grain, so the same note always prints the same.
+        grain = ((xs[None, :] * 13 + ys[:, None] * 7) % 17) / 16.0
+        alpha = alpha * (0.82 + 0.18 * grain)[..., None]
     ink = over[:, :, :3]
     paper = base[:, :, :3]
     mixed = paper * (1 - alpha) + (paper * ink / 255.0) * alpha
     base[:, :, :3] = mixed
     page.paste(Image.fromarray(base.astype(np.uint8), "RGBA"))
-
-
-def _covered(style: HandwritingStyle, text: str) -> bool:
-    if style.engine != "glyphs":
-        return False
-    letters = [ch for ch in text if not ch.isspace()]
-    if not letters:
-        return False
-    if dominant_script(text) not in {"Latn", "Zyyy"}:
-        return False
-    return all(style.has_char(ch) for ch in letters)
 
 
 def _median_width(style: HandwritingStyle, ch: str) -> float:
@@ -138,13 +134,16 @@ def render_styled(
         text = text[:MAX_CHARS]
         truncated = True
 
-    if request.ink_id == "sample":
+    if photo is not None and request.ink_id == "sample" and photo.pen_rgb:
+        rgb = photo.pen_rgb
+        alpha = 0.8
+    elif request.ink_id == "sample":
         rgb = style.stats.ink_rgb
-        alpha = 0.94
+        alpha = 0.8 if photo is not None else 0.94
     else:
         ink = ink_by_id(request.ink_id)
         rgb = ink["rgb"]
-        alpha = ink["alpha"]
+        alpha = min(ink["alpha"], 0.86) if photo is not None else ink["alpha"]
 
     pages: list[Image.Image] = []
     line_mm = fonts.registry.font(language.font).line_mm
@@ -226,11 +225,25 @@ def _open_page(request, direction, photo: PreparedPage | None, line_mm: float):
     width, height = a4_px(request.dpi)
     resized = Image.fromarray(cv2_rgb(photo.image), "RGB").resize((width, height), Image.Resampling.LANCZOS)
     image = resized.convert("RGBA")
-    baselines = [int(y * height) for y in photo.lines if 0.07 < y < 0.96]
+    pitch = photo.pitch
+    if pitch <= 0 and len(photo.lines) >= 2:
+        pitch = float(np.median(np.diff(photo.lines)))
+    if pitch <= 0:
+        pitch = 0.045
+    # Size comes from the rule pitch, not from the gap between the empty lines we keep.
+    line_h = max(8, int(round(pitch * height)))
+    occupied = photo.occupied if len(photo.occupied) == len(photo.lines) else [False] * len(photo.lines)
+    chosen = [y for y, taken in zip(photo.lines, occupied) if not taken and 0.05 < y < 0.97]
+    if len(chosen) < 2:
+        chosen = [y for y in photo.lines if 0.05 < y < 0.97]
+    baselines = []
+    for y in chosen:
+        row = int(round(y * height))
+        if not baselines or row - baselines[-1] > 2:
+            baselines.append(row)
     if len(baselines) < 2:
         baselines = [int(height * y) for y in (0.18, 0.26, 0.34, 0.42, 0.50, 0.58, 0.66, 0.74, 0.82, 0.90)]
-    gaps = [baselines[i + 1] - baselines[i] for i in range(len(baselines) - 1)]
-    line_h = int(np.median(gaps)) if gaps else int(height * 0.045)
+        line_h = int(height * 0.045)
     left = mm(request.dpi, 22) if direction != "rtl" else mm(request.dpi, 14)
     right = width - mm(request.dpi, 14) if direction != "rtl" else width - mm(request.dpi, 22)
     page = PageGeometry(
@@ -254,10 +267,34 @@ def cv2_rgb(image) -> np.ndarray:
 
 def _x_height(template_id: str, line_h: int, style: HandwritingStyle, photo: bool) -> float:
     if photo:
-        return max(8.0, line_h * float(np.clip(style.stats.x_height_ratio, 0.3, 0.6)))
+        # Fit the x-height between the rules, leaving room for ascenders and descenders.
+        ratio = float(np.clip(style.stats.x_height_ratio, 0.34, 0.46))
+        return max(8.0, line_h * ratio)
     if template_id == "four-line":
         return max(8.0, line_h * 0.30)
     return max(8.0, line_h * 0.42)
+
+
+_EM_X_HEIGHT: dict[str, float] = {}
+
+
+def _font_px(fonts, font_id: str, x_height: float) -> float:
+    """Point size whose rendered x matches `x_height`, not a guessed em ratio."""
+
+    ratio = _EM_X_HEIGHT.get(font_id)
+    if ratio is None:
+        import freetype
+
+        face = fonts.library.prepare_freetype(font_id, 96.0)
+        index = face.get_char_index(ord("x")) or face.get_char_index(ord("o"))
+        ratio = 0.47
+        if index:
+            face.load_glyph(index, freetype.FT_LOAD_NO_HINTING)
+            measured = float(face.glyph.metrics.height) / 64.0
+            if measured > 2:
+                ratio = measured / 96.0
+        _EM_X_HEIGHT[font_id] = ratio
+    return max(8.0, x_height / max(ratio, 0.2))
 
 
 def _pieces(fonts, style, text, language, x_height, request, rgb):
@@ -268,23 +305,35 @@ def _pieces(fonts, style, text, language, x_height, request, rgb):
         if raw.strip() == "":
             pieces.append({"kind": "space", "width": x_height * style.stats.word_spacing, "text": raw})
             continue
-        if _covered(style, raw):
+        letters = [ch for ch in raw if not ch.isspace()]
+        use_glyphs = (
+            style.engine == "glyphs"
+            and letters
+            and dominant_script(raw) in {"Latn", "Zyyy"}
+            and any(style.has_char(ch) for ch in letters)
+        )
+        if use_glyphs:
             width = 0.0
             chars = []
-            for ch in raw:
-                if ch == " ":
+            for offset, ch in enumerate(raw):
+                if ch.isspace():
                     advance = x_height * style.stats.word_spacing
                     chars.append((ch, advance, None))
-                else:
+                elif style.has_char(ch):
                     advance = x_height * (_median_width(style, ch) + style.stats.letter_spacing)
-                    chars.append((ch, advance, ch))
+                    chars.append((ch, advance, "glyph"))
+                else:
+                    shaped, px, advance = _shape_char(
+                        fonts, style, ch, language, x_height, request, f"{index}:{offset}"
+                    )
+                    chars.append((ch, advance, {"glyphs": shaped, "px": px}))
                 width += advance
             pieces.append({"kind": "glyphs", "width": width, "text": raw, "chars": chars, "index": index})
             continue
         font_id = fonts.pick_font(raw, language)
         if dominant_script(raw) in {"Latn", "Zyyy"} and fonts.library.covers(style.fallback_font, raw):
             font_id = style.fallback_font
-        px = max(10.0, x_height / 0.48)
+        px = _font_px(fonts, font_id, x_height)
         glyphs = fonts.library.shape(font_id, raw, px)
         config = fonts.registry.font(font_id)
         amount = style.stats.jitter_amount if config.jitter == "glyph" else config.jitter_amount
@@ -361,28 +410,60 @@ def _draw_line(fonts, page, pieces, baseline, indent, language, style, x_height,
             continue
         if piece["kind"] == "glyphs":
             x = origin
-            for offset, (ch, advance, _) in enumerate(piece["chars"]):
-                if ch == " " or not style.has_char(ch):
+            for offset, (ch, advance, payload) in enumerate(piece["chars"]):
+                if ch.isspace() or payload is None:
                     x += advance
                     continue
                 rng = rng_for(style.id, str(para_index), str(piece["index"]), str(offset), ch)
-                variants = style.glyphs[ch]
-                variant = variants[rng.randrange(len(variants))]
-                jitter = 1 + rng.uniform(-0.05, 0.05)
-                y_shift = rng.uniform(-0.04, 0.04) * x_height
-                raster = _raster(variant, x_height, jitter)
-                if raster is None:
-                    x += advance
-                    continue
-                mask, base, left = raster
-                _blit(overlay, mask, int(x + left), int(baseline - base + y_shift), rgb, alpha)
+                y_shift = rng.uniform(-0.025, 0.025) * x_height
+                if payload == "glyph" and style.has_char(ch):
+                    variants = style.glyphs[ch]
+                    variant = variants[rng.randrange(len(variants))]
+                    jitter = 1 + rng.uniform(-0.035, 0.035)
+                    raster = _raster(variant, x_height, jitter)
+                    if raster is not None:
+                        mask, base, left = raster
+                        _blit(overlay, mask, int(x + left), int(baseline - base + y_shift), rgb, alpha)
+                elif isinstance(payload, dict):
+                    draw_glyphs(
+                        overlay,
+                        payload["glyphs"],
+                        x,
+                        baseline + y_shift,
+                        payload["px"],
+                        fonts.library,
+                        rgb,
+                        alpha,
+                    )
                 x += advance
             continue
         draw_glyphs(overlay, piece["glyphs"], origin, baseline, piece["px"], fonts.library, rgb, alpha)
     if photo:
-        _multiply(page.image, overlay)
+        _multiply(page.image, overlay, textured=True)
     else:
         page.image.alpha_composite(overlay)
+
+
+def _shape_char(fonts, style, ch, language, x_height, request, salt: str):
+    font_id = style.fallback_font
+    if not fonts.library.covers(font_id, ch):
+        font_id = fonts.pick_font(ch, language)
+    px = _font_px(fonts, font_id, x_height)
+    glyphs = fonts.library.shape(font_id, ch, px)
+    config = fonts.registry.font(font_id)
+    amount = style.stats.jitter_amount if config.jitter == "glyph" else config.jitter_amount
+    apply_jitter(
+        glyphs,
+        config.jitter,
+        min(amount, 0.45),
+        px,
+        rng_for(style.id, request.language_id, salt, ch),
+    )
+    if config.jitter == "glyph" and style.stats.slant_deg:
+        lean = style.stats.slant_deg * 0.35
+        for glyph in glyphs:
+            glyph.rotation += lean
+    return glyphs, px, measure_width(glyphs)
 
 
 def _header(fonts, page, request, language, rgb, alpha, photo):

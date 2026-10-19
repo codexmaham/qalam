@@ -47,7 +47,7 @@ The page can be set in a bundled font, or in a style measured from a photograph.
 
 **What quality to expect.** A photo of ordinary notes does not give clean, separable letters, especially when the writing is joined. Qalam still cuts the photo into contours and stores them, and it measures slant, x-height, letter spacing, stroke width, and ink colour. Those numbers tune the fallback font: the page is set in the closest bundled handwriting face, in the sample's ink, with the slant leaning the jitter. That is an honest limit of a CPU pipeline on an 8 GB machine, not a neural one-shot model.
 
-The reliable way to use your own letters is the **handwriting sheet**. Print it, write one character in each box, and photograph it. Each box is one glyph, the outline is traced, and new words are built from those shapes with a little variation in size, baseline, and spacing. Characters the sheet does not contain fall back to the bundled font.
+The reliable way to use your own letters is the **handwriting sheet**. Print it, write one character in each box, and photograph it. Each box is one glyph. Letters are normalised to one shared x-height and one baseline, by their class: x-height letters, ascenders, and descenders. A contour that is the wrong size, a merged blob, or a piece of the box is dropped, and that character is set from the bundled font at the same size.
 
 ![A filled handwriting sheet](samples/handwriting-sheet.png)
 
@@ -55,9 +55,11 @@ The reliable way to use your own letters is the **handwriting sheet**. Print it,
 
 ## Your own page
 
-Leave the paper blank and you get a white A4 sheet with the usual rules. Upload a photo of a notebook page and that photo becomes the paper: Qalam looks for the page, straightens the perspective, finds the ruled lines, and places the writing on them. The ink is multiplied into the photo so the paper texture stays. Download the result as a PNG or a PDF.
+Leave the paper blank and you get a white A4 sheet with the usual rules. Upload a photo of a notebook page and that photo becomes the paper: Qalam straightens the perspective, finds the ruled lines, and sizes the handwriting so the x-height fits between them. Lines that already contain pen ink are skipped, and the new text starts on the first free line. The ink is the pen already on the page, or the style's ink when the page is blank, multiplied in with a little grain so the paper and the light stay visible. Download the result as a PNG or a PDF.
 
-![Writing placed on a photographed notebook page](samples/on-your-page.png)
+![Writing on a photographed blank ruled page](samples/on-your-page.png)
+
+![The same hand, starting after the lines that are already written](samples/on-your-page-occupied.png)
 
 The preset photographs live in [`backend/assets/handwriting-samples/`](backend/assets/handwriting-samples/README.md), separate from the fonts. They may have come from the internet. Replace them with samples the maintainer owns before a public release if the licence is unclear, then run `python3 scripts/build_presets.py`.
 

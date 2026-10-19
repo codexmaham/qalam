@@ -7,7 +7,7 @@ import io
 import cv2
 import numpy as np
 from fastapi.testclient import TestClient
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from qalam.main import create_app
 from qalam.models import RenderRequest
@@ -89,18 +89,27 @@ def test_handwriting_sheet_round_trip():
 
     cells = _cells(image)
     assert len(cells) == len(ORDER)
-    pil = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-    draw = ImageDraw.Draw(pil)
-    from PIL import ImageFont
+    from qalam.styles.sheet import write_guide_letters
 
-    pen = ImageFont.truetype(font, 34)
-    for index, (x, y, w, h) in enumerate(cells):
-        ch = ORDER[index]
-        box = pen.getbbox(ch)
-        draw.text((x + 8, y + h * 0.25), ch, font=pen, fill=(20, 30, 90))
-    filled = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+    filled = write_guide_letters(image, font)
     style = analyse_sheet(filled, style_id="sheet", name="Sheet", font_path=font, fallback_font="patrick-hand")
-    assert "H" in style.glyphs and "e" in style.glyphs and "o" in style.glyphs
+    assert {"H", "e", "o", "m", "y"} <= set(style.glyphs)
+
+    def _span(ch: str) -> tuple[float, float]:
+        glyph = style.glyphs[ch][0]
+        ys = [point[1] for ring in glyph.outers + glyph.holes for point in ring]
+        return min(ys), max(ys)
+
+    for ch in ("e", "o", "m"):
+        bottom, top = _span(ch)
+        assert -0.2 <= bottom <= 0.2
+        assert 0.75 <= top - bottom <= 1.3
+    m_bottom, m_top = _span("m")
+    o_bottom, o_top = _span("o")
+    assert abs((m_top - m_bottom) - (o_top - o_bottom)) < 0.25
+    y_bottom, y_top = _span("y")
+    assert y_bottom < -0.15
+    assert y_top > 0.7
     renderer = NotebookRenderer()
     style_id = renderer.styles.remember_style(style)
     page = renderer.render(
@@ -159,6 +168,46 @@ def test_uploaded_page_is_straightened_and_written_on():
     peak = int(rows.argmax())
     line_rows = [int(y * page.height) for y in prepared.lines]
     assert min(abs(peak - row) for row in line_rows) < 48
+
+
+def test_writing_skips_lines_that_already_have_ink():
+    height, width = 980, 700
+    image = np.full((height, width, 3), 246, np.uint8)
+    rules = list(range(150, 900, 52))
+    for y in rules:
+        cv2.line(image, (80, y), (width - 50, y), (186, 168, 118), 2)
+    cv2.line(image, (110, 90), (110, height - 40), (70, 70, 190), 2)
+    for y in rules[:3]:
+        cv2.putText(image, "already on this line", (150, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (45, 40, 35), 2)
+    ok, buf = cv2.imencode(".png", image)
+    assert ok
+    prepared = prepare_page(buf.tobytes())
+    assert any(prepared.occupied)
+    assert any(not taken for taken in prepared.occupied)
+    renderer = NotebookRenderer()
+    page_id = renderer.styles.remember_page(prepared)
+    result = renderer.render(
+        RenderRequest(
+            text="This starts on a free line.",
+            language_id="en",
+            style_id="school-neat",
+            ink_id="sample",
+            page_photo_id=page_id,
+            dpi=90,
+        )
+    )
+    page = np.array(result.pages[0])
+    photo = cv2.resize(prepared.image, (page.shape[1], page.shape[0]), interpolation=cv2.INTER_AREA)
+    photo = cv2.cvtColor(photo, cv2.COLOR_BGR2RGB)
+    changed = np.abs(page.astype(np.int16) - photo.astype(np.int16)).sum(axis=2) > 50
+    rows = np.where(changed.sum(axis=1) > 15)[0]
+    assert len(rows) > 0
+    top = int(rows.min())
+    pitch = prepared.pitch * page.shape[0]
+    free = [int(y * page.shape[0]) for y, taken in zip(prepared.lines, prepared.occupied) if not taken]
+    taken_rows = [int(y * page.shape[0]) for y, taken in zip(prepared.lines, prepared.occupied) if taken]
+    assert free and min(abs(top - row) for row in free) < pitch * 1.3
+    assert min(abs(top - row) for row in taken_rows) > pitch * 0.35
 
 
 def test_styles_api_and_uploads():

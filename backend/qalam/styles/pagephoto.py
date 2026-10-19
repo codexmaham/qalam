@@ -6,12 +6,24 @@ rules and multiplied into the photo, so the paper texture stays.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
 
-from qalam.styles.extract import read_image
+def _decode(data: bytes) -> np.ndarray:
+    image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError("Could not read that image")
+    height, width = image.shape[:2]
+    scale = 1600 / max(height, width)
+    if scale < 1:
+        image = cv2.resize(
+            image,
+            (int(round(width * scale)), int(round(height * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
+    return image
 
 
 @dataclass
@@ -19,6 +31,9 @@ class PreparedPage:
     image: np.ndarray  # BGR, straightened
     lines: list[float]  # baseline y, 0..1 of the image height
     found_page: bool
+    occupied: list[bool] = field(default_factory=list)  # same length as lines
+    pitch: float = 0.0  # rule spacing, as a fraction of the image height
+    pen_rgb: tuple[int, int, int] | None = None
 
     def png_bytes(self) -> bytes:
         ok, buf = cv2.imencode(".png", self.image)
@@ -110,8 +125,189 @@ def _even_lines(count: int = 12) -> list[float]:
     return [top + step * (i + 1) for i in range(count)]
 
 
+def _estimate_pitch(lines: list[float]) -> float | None:
+    """The rule spacing, even when some rules were missed and a few are doubled."""
+
+    if len(lines) < 3:
+        return None
+    gaps = np.diff(np.asarray(lines, dtype=np.float64))
+    gaps = gaps[gaps > 0.008]
+    if len(gaps) == 0:
+        return None
+    seeds = [float(g) for g in gaps]
+    seeds += [float(g) / 2 for g in gaps if g / 2 > 0.012]
+    seeds += [float(g) / 3 for g in gaps if g / 3 > 0.012]
+    best_pitch: float | None = None
+    best_score = -1e9
+    for pitch in seeds:
+        explained = 0.0
+        residual = 0.0
+        for gap in gaps:
+            steps = max(1, int(round(float(gap) / pitch)))
+            err = abs(float(gap) - steps * pitch) / pitch
+            residual += err
+            if err < 0.18:
+                explained += 1.0
+        score = explained - residual * 0.12
+        smaller = best_pitch is None or pitch < best_pitch - 1e-4
+        if score > best_score + 0.08 or (abs(score - best_score) <= 0.08 and smaller):
+            best_score = score
+            best_pitch = pitch
+    if best_pitch is None or best_score < 1.4:
+        return None
+    return best_pitch
+
+
+def _grid(lines: list[float], pitch: float) -> list[float]:
+    """Snap detected rules onto one spacing and fill the rules that were missed."""
+
+    if len(lines) < 2 or pitch <= 0:
+        return lines
+    best_origin = lines[0]
+    best_err = 1e9
+    for origin in lines:
+        err = 0.0
+        for y in lines:
+            steps = round((y - origin) / pitch)
+            err += abs(y - (origin + steps * pitch))
+        if err < best_err:
+            best_err = err
+            best_origin = origin
+    if best_err / len(lines) > pitch * 0.28:
+        return lines
+    first, last = min(lines), max(lines)
+    y = best_origin
+    while y - pitch >= max(0.04, first - pitch * 0.45):
+        y -= pitch
+    grid: list[float] = []
+    while y <= min(0.98, last + pitch * 0.45):
+        if 0.045 < y < 0.975:
+            grid.append(round(float(y), 5))
+        y += pitch
+    return grid or lines
+
+
+def _periodic_rules(image: np.ndarray) -> tuple[list[float], float | None]:
+    """One rule spacing from the repeating horizontal edges, including faint rules."""
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (3, 3), 0)
+    sobel = np.abs(cv2.Sobel(blur, cv2.CV_32F, 0, 1, ksize=3))
+    height, width = gray.shape
+    if height < 48:
+        return [], None
+    profile = sobel[:, int(width * 0.16) : int(width * 0.92)].mean(axis=1)
+    signal = profile - float(profile.mean())
+    size = len(signal)
+    spectrum = np.fft.rfft(signal, n=size * 2)
+    corr = np.fft.irfft(spectrum * np.conj(spectrum))[:size]
+    lo = max(8, int(height * 0.018))
+    hi = max(lo + 4, int(height * 0.09))
+    peak = lo + int(np.argmax(corr[lo:hi]))
+    if corr[0] <= 1 or float(corr[peak]) / float(corr[0]) < 0.12:
+        return [], None
+    best_phase = 0
+    best_score = -1.0
+    for phase in range(peak):
+        rows = np.arange(phase, height - 2, peak)
+        rows = rows[(rows > height * 0.04) & (rows < height * 0.97)]
+        if len(rows) < 5:
+            continue
+        score = float(np.percentile(profile[rows], 30))
+        if score > best_score:
+            best_score = score
+            best_phase = phase
+    lines: list[float] = []
+    for y in range(best_phase, height, peak):
+        frac = y / height
+        if 0.045 < frac < 0.975:
+            lines.append(round(float(frac), 5))
+    if len(lines) < 5:
+        return [], None
+    return lines, peak / height
+
+
+def _pen_ink(image: np.ndarray, pitch: float) -> np.ndarray:
+    """Dark pen strokes. Ruled lines and the red margin are left out."""
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    sigma = max(2.0, float(pitch) * gray.shape[0] * 0.42)
+    paper = cv2.GaussianBlur(gray, (0, 0), sigma)
+    darker = paper.astype(np.int16) - gray.astype(np.int16)
+    ink = ((darker > 32) & (gray < 120)).astype(np.uint8) * 255
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    hue, sat = hsv[:, :, 0], hsv[:, :, 1]
+    blue = (hue > 85) & (hue < 145) & (sat > 18) & (gray > 105)
+    red = ((hue < 12) | (hue > 168)) & (sat > 45)
+    ink[blue | red] = 0
+    bar = max(18, image.shape[1] // 4)
+    rules = cv2.morphologyEx(ink, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (bar, 1)))
+    ink[cv2.dilate(rules, np.ones((2, 5), np.uint8)) > 0] = 0
+    return ink
+
+
+def _mark_occupied(image: np.ndarray, lines: list[float], pitch: float) -> list[bool]:
+    """A line is taken when letter-shaped pen ink already sits above that rule."""
+
+    if not lines:
+        return []
+    ink = _pen_ink(image, pitch if pitch > 0 else 0.04)
+    height, width = ink.shape
+    margin = int(width * 0.16)
+    right = int(width * 0.94)
+    step = pitch if pitch > 0 else 0.04
+    scale = max(0.65, height / 520.0)
+    min_height = max(4, int(round(6 * scale)))
+    min_piece = max(12, int(round(16 * scale * scale)))
+    min_total = max(80, int(round(110 * scale * scale)))
+    flags: list[bool] = []
+    for index, y in enumerate(lines):
+        above = lines[index - 1] if index else y - step
+        y0 = int(round(above * height)) + 2
+        y1 = int(round(y * height)) - 2
+        band = ink[max(0, y0) : max(0, min(height, y1)), margin:right]
+        if band.size == 0 or band.shape[0] < 3:
+            flags.append(False)
+            continue
+        count, _labels, stats, _centroids = cv2.connectedComponentsWithStats((band > 0).astype(np.uint8), 8)
+        letters = 0
+        area = 0
+        limit = band.shape[1] * 0.5
+        for comp in range(1, count):
+            _x, _y, comp_w, comp_h, comp_area = (int(v) for v in stats[comp])
+            if comp_h >= min_height and comp_w >= 3 and comp_w < limit and comp_area >= min_piece and comp_h > comp_w * 0.28:
+                letters += 1
+                area += comp_area
+        flags.append(letters >= 3 and area >= min_total)
+    return flags
+
+
+def _sample_pen(image: np.ndarray, lines: list[float], occupied: list[bool], pitch: float) -> tuple[int, int, int] | None:
+    if not any(occupied):
+        return None
+    mask = _pen_ink(image, pitch if pitch > 0 else 0.04)
+    height, width = mask.shape
+    chosen = np.zeros(mask.shape, np.uint8)
+    step = pitch if pitch > 0 else 0.04
+    for index, (y, taken) in enumerate(zip(lines, occupied)):
+        if not taken:
+            continue
+        above = lines[index - 1] if index else y - step
+        y0 = int(round(above * height)) + 2
+        y1 = int(round(y * height)) - 1
+        chosen[max(0, y0) : min(height, y1), int(width * 0.16) : int(width * 0.94)] = 1
+    selected = (mask > 0) & (chosen > 0)
+    if int(selected.sum()) < 40:
+        return None
+    bgr = np.percentile(image[selected], 30, axis=0)
+    rgb = (int(np.clip(bgr[2], 0, 255)), int(np.clip(bgr[1], 0, 255)), int(np.clip(bgr[0], 0, 255)))
+    if sum(rgb) / 3 > 170:
+        return None
+    return rgb
+
+
 def prepare_page(data: bytes) -> PreparedPage:
-    image = read_image(data)
+    image = _decode(data)
     warped, found = _warp(image)
     # Cap the working size. The renderer scales this onto A4.
     height, width = warped.shape[:2]
@@ -122,11 +318,28 @@ def prepare_page(data: bytes) -> PreparedPage:
             (int(round(width * scale)), int(round(height * scale))),
             interpolation=cv2.INTER_AREA,
         )
-    lines = _rules(warped)
-    if len(lines) < 4:
-        lines = _even_lines()
-        found_rules = False
-    else:
+    periodic, periodic_pitch = _periodic_rules(warped)
+    detected = _rules(warped)
+    if periodic and periodic_pitch and len(periodic) >= 6:
+        lines = periodic
+        pitch = periodic_pitch
         found_rules = True
+    elif len(detected) >= 4:
+        found_rules = True
+        pitch = _estimate_pitch(detected) or float(np.median(np.diff(detected)))
+        lines = _grid(detected, pitch)
+    else:
+        lines = _even_lines()
+        pitch = lines[1] - lines[0]
+        found_rules = False
+    occupied = _mark_occupied(warped, lines, pitch or 0.04)
+    pen = _sample_pen(warped, lines, occupied, pitch or 0.04)
     # Writing sits on the line, so the detected rule is the baseline.
-    return PreparedPage(image=warped, lines=lines, found_page=found or found_rules)
+    return PreparedPage(
+        image=warped,
+        lines=lines,
+        found_page=found or found_rules,
+        occupied=occupied,
+        pitch=float(pitch or 0.0),
+        pen_rgb=pen,
+    )

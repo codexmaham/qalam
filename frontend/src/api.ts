@@ -155,7 +155,9 @@ export async function uploadHandwriting(file: File, transcript: string, mode: "n
   return response.json();
 }
 
-export async function uploadPagePhoto(file: File): Promise<{ id: string; lines: number; preview: string }> {
+export async function uploadPagePhoto(
+  file: File,
+): Promise<{ id: string; lines: number; empty?: number; preview: string }> {
   const body = new FormData();
   body.append("file", file);
   const response = await fetch("/api/page-photo", { method: "POST", body });

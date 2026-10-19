@@ -28,6 +28,7 @@ export function NotesPage() {
   const [pagePhotoId, setPagePhotoId] = useState("");
   const [pagePreview, setPagePreview] = useState("");
   const [pageLines, setPageLines] = useState(0);
+  const [pageEmpty, setPageEmpty] = useState(0);
   const [uploading, setUploading] = useState<"hand" | "page" | null>(null);
   const [text, setText] = useState("");
   const [name, setName] = useState("");
@@ -180,6 +181,7 @@ export function NotesPage() {
       setPagePhotoId(page.id);
       setPagePreview(page.preview);
       setPageLines(page.lines);
+      setPageEmpty(page.empty ?? page.lines);
     } catch (error) {
       setPreviewError(error instanceof Error ? error.message : "Could not read that page.");
     } finally {
@@ -283,7 +285,11 @@ export function NotesPage() {
           {pagePreview ? (
             <div className="page-preview">
               <img src={`data:image/jpeg;base64,${pagePreview}`} alt="Straightened notebook page" />
-              <p className="note">{pageLines} ruled lines. Writing follows them.</p>
+              <p className="note">
+                {pageEmpty < pageLines
+                  ? `${pageLines} ruled lines, ${pageEmpty} empty. Writing starts on the first free line.`
+                  : `${pageLines} ruled lines. Writing follows them.`}
+              </p>
               <button
                 className="quiet"
                 type="button"
@@ -291,6 +297,7 @@ export function NotesPage() {
                   setPagePhotoId("");
                   setPagePreview("");
                   setPageLines(0);
+                  setPageEmpty(0);
                 }}
               >
                 Use blank paper
