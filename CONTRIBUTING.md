@@ -53,7 +53,9 @@ python3 -m qalam.cli --language ur --template single-ruled --out page.png
 | `backend/qalam/main.py` | The local HTTP API. |
 | `frontend/src/` | The Notes page and the Voice placeholder. |
 
-`FontHandwritingRenderer.render` is the function a future stroke-synthesis engine should replace. Routes, templates, and the web app only see `RenderRequest` and `RenderResult` in `backend/qalam/models.py`.
+`NotebookRenderer.render` is the function the API calls. It delegates to `FontHandwritingRenderer` for the bundled faces, and to the contour composer for a handwriting sample. A one-shot model should replace the composer and keep `render(RenderRequest) -> RenderResult` in `backend/qalam/models.py`.
+
+The default handwriting style is one assignment, `DEFAULT_STYLE_ID`, in `backend/qalam/styles/config.py`. Preset photographs and their extracted contours live in `backend/assets/handwriting-samples/`. Rebuild them with `python3 scripts/build_presets.py` after replacing the photos.
 
 ## Add a language
 

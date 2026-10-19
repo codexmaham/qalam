@@ -11,7 +11,8 @@ class HandwritingRenderer(Protocol):
     def render(self, request: RenderRequest) -> RenderResult:
         """Paint `request` onto one or more A4 pages.
 
-        Pages are Pillow images. The web API only depends on this method,
-        so a stroke engine can replace the font renderer without touching
-        routes, templates, or the client.
+        Pages are Pillow images. The web API only depends on this method.
+        `NotebookRenderer` is the implementation the app calls: bundled fonts,
+        contours cloned from a handwriting photo, or a later one-shot model
+        can all satisfy it without changing routes or the client.
         """

@@ -17,10 +17,49 @@ This first version is the text path: typed notes, a live page, and a PDF. Voice 
 - Pick the paper: single-ruled, four-line English copy, tianzige (the Chinese character grid), or an open square grid in the spirit of genkō yōshi and wongoji.
 - Pick an ink: ballpoint blue, black, navy, green, red, or pencil.
 - Put a name and a date on the sheet.
-- Download a multi-page A4 PDF.
+- Download a multi-page A4 PDF, or a PNG of the page.
+- Pick a handwriting style. The default is the neat school hand. Change it with one line in [`backend/qalam/styles/config.py`](backend/qalam/styles/config.py): `DEFAULT_STYLE_ID`.
+- Upload a photo of your own page. Qalam straightens it, finds the ruled lines, and writes on those lines.
+- Upload a handwriting sample, or fill the printed template sheet, and new text is set from that hand.
 - Add a language by adding a font and a block of config. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 The Voice page is a placeholder. Recording and transcription are the next step, on purpose: the notebook renderer is the part every later feature writes through.
+
+## Handwriting styles
+
+The page can be set in a bundled font, or in a style measured from a photograph. Both go through the same `render` method, so a one-shot handwriting model can replace the contour composer later without changing the page or the API.
+
+| Style | What it is |
+| --- | --- |
+| Neat school notes | The default. Two pages of one neat school writer, merged. |
+| Black cursive letter | A cursive letter in black ink. |
+| Blue quick notes | Fast notes in blue. |
+| Black print notes | Upright print in black. |
+| Qalam fonts | The original multilingual fonts, one per script. |
+
+![Neat school notes, the default](samples/school-neat.png)
+
+![Blue quick notes](samples/quick-notes.png)
+
+![Black cursive letter](samples/cursive-letter.png)
+
+![Black print notes](samples/print-notes.png)
+
+**What quality to expect.** A photo of ordinary notes does not give clean, separable letters, especially when the writing is joined. Qalam still cuts the photo into contours and stores them, and it measures slant, x-height, letter spacing, stroke width, and ink colour. Those numbers tune the fallback font: the page is set in the closest bundled handwriting face, in the sample's ink, with the slant leaning the jitter. That is an honest limit of a CPU pipeline on an 8 GB machine, not a neural one-shot model.
+
+The reliable way to use your own letters is the **handwriting sheet**. Print it, write one character in each box, and photograph it. Each box is one glyph, the outline is traced, and new words are built from those shapes with a little variation in size, baseline, and spacing. Characters the sheet does not contain fall back to the bundled font.
+
+![A filled handwriting sheet](samples/handwriting-sheet.png)
+
+![The same letters set as a new sentence](samples/from-your-hand.png)
+
+## Your own page
+
+Leave the paper blank and you get a white A4 sheet with the usual rules. Upload a photo of a notebook page and that photo becomes the paper: Qalam looks for the page, straightens the perspective, finds the ruled lines, and places the writing on them. The ink is multiplied into the photo so the paper texture stays. Download the result as a PNG or a PDF.
+
+![Writing placed on a photographed notebook page](samples/on-your-page.png)
+
+The preset photographs live in [`backend/assets/handwriting-samples/`](backend/assets/handwriting-samples/README.md), separate from the fonts. They may have come from the internet. Replace them with samples the maintainer owns before a public release if the licence is unclear, then run `python3 scripts/build_presets.py`.
 
 ![Urdu in Nastaliq on ruled paper](samples/urdu-single-ruled.png)
 
@@ -125,21 +164,23 @@ flowchart LR
   notes[Notes page] --> api[FastAPI]
   voice[Voice page, next] --> api
   api --> renderer[HandwritingRenderer]
-  renderer --> shape[HarfBuzz]
-  renderer --> jitter[Jitter]
-  renderer --> paper[Notebook template]
-  paper --> pdf[A4 PDF]
+  renderer --> fonts[Bundled fonts]
+  renderer --> clone[Photo contours]
+  renderer --> photo[Your page photo]
+  fonts --> pdf[A4 PDF and PNG]
+  clone --> pdf
+  photo --> pdf
 ```
 
-Text is split into words, or into grapheme clusters for Chinese, Japanese, Korean, and Thai. Each piece is shaped, then jittered in a way that script can survive: Arabic words stay joined, Indic and Thai marks stay on their bases, and Latin letters move one by one. The same function draws the preview and the PDF. A stroke engine can replace that function later without changing the page.
+Text is split into words, or into grapheme clusters for Chinese, Japanese, Korean, and Thai. Each piece is shaped, then jittered in a way that script can survive: Arabic words stay joined, Indic and Thai marks stay on their bases, and Latin letters move one by one. A sample style reuses that path for any character it could not cut out of the photo. The same function draws the preview, the PNG, and the PDF.
 
 Fonts are stored in the repo under the SIL Open Font License so the app works with no network. Copyright lines are in [backend/fonts/NOTICE.md](backend/fonts/NOTICE.md).
 
 ## Roadmap
 
 - Voice, with Whisper through whisper.cpp, on this computer. Audio is not uploaded.
-- A stroke-synthesis engine behind the same renderer interface, so the writing varies like a hand instead of a font.
-- Cloning a teacher's handwriting from a photograph.
+- A one-shot handwriting model behind the same renderer interface, so a single sample can synthesise strokes instead of cutting contours out of a photo. The contour composer is the stand-in that model would replace.
+- A stroke-synthesis engine for the bundled faces, so the writing varies like a hand instead of a font.
 - More paper: dotted tracing, graph, Urdu copy lines, and a worksheet header.
 - Vertical genkō yōshi.
 - Dictionary line-breaking for Thai.

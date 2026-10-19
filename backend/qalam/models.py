@@ -19,6 +19,9 @@ class RenderRequest:
     date: str = ""
     dpi: int = 150
     max_pages: int = 30
+    style_id: str = ""
+    handwriting_id: str = ""
+    page_photo_id: str = ""
 
 
 @dataclass

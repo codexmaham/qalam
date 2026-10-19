@@ -1,18 +1,34 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   downloadPdf,
+  downloadPng,
+  downloadStyleSheet,
   fetchCatalogue,
   fetchPreview,
+  fetchStyles,
+  uploadHandwriting,
+  uploadPagePhoto,
   type Catalogue,
   type Language,
+  type StyleInfo,
 } from "../api";
 
 export function NotesPage() {
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+  const [styles, setStyles] = useState<StyleInfo[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [languageId, setLanguageId] = useState("en");
   const [template, setTemplate] = useState("four-line");
-  const [ink, setInk] = useState("blue");
+  const [ink, setInk] = useState("sample");
+  const [styleId, setStyleId] = useState("school-neat");
+  const [handwritingId, setHandwritingId] = useState("");
+  const [handwritingNote, setHandwritingNote] = useState("");
+  const [transcript, setTranscript] = useState("");
+  const [filledSheet, setFilledSheet] = useState(false);
+  const [pagePhotoId, setPagePhotoId] = useState("");
+  const [pagePreview, setPagePreview] = useState("");
+  const [pageLines, setPageLines] = useState(0);
+  const [uploading, setUploading] = useState<"hand" | "page" | null>(null);
   const [text, setText] = useState("");
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
@@ -32,9 +48,11 @@ export function NotesPage() {
         year: "numeric",
       }),
     );
-    fetchCatalogue()
-      .then((data) => {
+    Promise.all([fetchCatalogue(), fetchStyles()])
+      .then(([data, styleData]) => {
         setCatalogue(data);
+        setStyles(styleData.styles);
+        setStyleId(styleData.default || "school-neat");
         const english = data.languages.find((item) => item.id === "en") ?? data.languages[0];
         setLanguageId(english.id);
         setTemplate(english.recommended[0] ?? "single-ruled");
@@ -55,7 +73,17 @@ export function NotesPage() {
     const handle = window.setTimeout(() => {
       setBusy(true);
       fetchPreview(
-        { text, language: language.id, template, ink, name, date },
+        {
+          text,
+          language: language.id,
+          template,
+          ink,
+          name,
+          date,
+          style: styleId === "upload" ? "" : styleId,
+          handwriting_id: styleId === "upload" ? handwritingId : "",
+          page_photo_id: pagePhotoId,
+        },
         controller.signal,
       )
         .then((preview) => {
@@ -76,7 +104,7 @@ export function NotesPage() {
       window.clearTimeout(handle);
       controller.abort();
     };
-  }, [catalogue, language, text, template, ink, name, date]);
+  }, [catalogue, language, text, template, ink, name, date, styleId, handwritingId, pagePhotoId]);
 
   function chooseLanguage(next: Language) {
     const previous = language;
@@ -90,15 +118,72 @@ export function NotesPage() {
     }
   }
 
+  function noteBody() {
+    return {
+      text,
+      language: language?.id ?? "en",
+      template,
+      ink,
+      name,
+      date,
+      style: styleId === "upload" ? "" : styleId,
+      handwriting_id: styleId === "upload" ? handwritingId : "",
+      page_photo_id: pagePhotoId,
+    };
+  }
+
   async function onDownload() {
     if (!language) return;
     setDownloading(true);
     try {
-      await downloadPdf({ text, language: language.id, template, ink, name, date });
+      await downloadPdf(noteBody());
     } catch (error) {
       setPreviewError(error instanceof Error ? error.message : "Could not build the PDF.");
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function onDownloadPng() {
+    if (!language) return;
+    setDownloading(true);
+    try {
+      await downloadPng(noteBody());
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Could not build the image.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function onHandwriting(file: File) {
+    setUploading("hand");
+    setPreviewError(null);
+    try {
+      const style = await uploadHandwriting(file, transcript, filledSheet ? "template" : "notes");
+      setHandwritingId(style.id);
+      setHandwritingNote(style.note || `${style.characters} characters, ${style.letters} shapes.`);
+      setStyleId("upload");
+      setInk("sample");
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Could not read that handwriting.");
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  async function onPagePhoto(file: File) {
+    setUploading("page");
+    setPreviewError(null);
+    try {
+      const page = await uploadPagePhoto(file);
+      setPagePhotoId(page.id);
+      setPagePreview(page.preview);
+      setPageLines(page.lines);
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Could not read that page.");
+    } finally {
+      setUploading(null);
     }
   }
 
@@ -138,6 +223,94 @@ export function NotesPage() {
           />
         </label>
         {language.font_style === "text" && <p className="note">{language.font_note}</p>}
+
+        <label className="field">
+          <span>Handwriting</span>
+          <select
+            value={styleId}
+            onChange={(event) => {
+              const next = event.target.value;
+              setStyleId(next);
+              if (next !== "upload" && next !== "qalam-fonts") setInk("sample");
+              if (next === "qalam-fonts" && ink === "sample") setInk("blue");
+            }}
+          >
+            {handwritingId && <option value="upload">My handwriting</option>}
+            {styles.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="note">
+          {styleId === "upload"
+            ? handwritingNote
+            : styles.find((item) => item.id === styleId)?.description}
+        </p>
+
+        <fieldset>
+          <legend>Your handwriting</legend>
+          <label className="file">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void onHandwriting(file);
+              }}
+            />
+            {uploading === "hand" ? "Reading the sample…" : "Upload a handwriting photo"}
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={filledSheet} onChange={(event) => setFilledSheet(event.target.checked)} />
+            I filled the template sheet
+          </label>
+          <textarea
+            value={transcript}
+            rows={3}
+            placeholder="Transcript, if this is a page of notes. One photo line per line."
+            onChange={(event) => setTranscript(event.target.value)}
+          />
+          <button className="quiet" type="button" onClick={() => void downloadStyleSheet()}>
+            Download the handwriting sheet
+          </button>
+        </fieldset>
+
+        <fieldset>
+          <legend>Your page</legend>
+          {pagePreview ? (
+            <div className="page-preview">
+              <img src={`data:image/jpeg;base64,${pagePreview}`} alt="Straightened notebook page" />
+              <p className="note">{pageLines} ruled lines. Writing follows them.</p>
+              <button
+                className="quiet"
+                type="button"
+                onClick={() => {
+                  setPagePhotoId("");
+                  setPagePreview("");
+                  setPageLines(0);
+                }}
+              >
+                Use blank paper
+              </button>
+            </div>
+          ) : (
+            <label className="file">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (file) void onPagePhoto(file);
+                }}
+              />
+              {uploading === "page" ? "Straightening the page…" : "Upload a photo of your page"}
+            </label>
+          )}
+        </fieldset>
 
         <label className="field grow">
           <span>Text</span>
@@ -202,7 +375,12 @@ export function NotesPage() {
                 key={item.id}
                 type="button"
                 className={item.id === ink ? "swatch on" : "swatch"}
-                style={{ background: item.hex }}
+                style={{
+                  background:
+                    item.id === "sample"
+                      ? styles.find((style) => style.id === (styleId === "upload" ? "" : styleId))?.ink || item.hex
+                      : item.hex,
+                }}
                 aria-label={item.name}
                 aria-pressed={item.id === ink}
                 title={item.name}
@@ -212,11 +390,16 @@ export function NotesPage() {
           </div>
         </fieldset>
 
-        <button className="download" type="submit" disabled={downloading}>
-          {downloading ? "Preparing the PDF…" : "Download A4 PDF"}
-        </button>
+        <div className="actions">
+          <button className="download" type="submit" disabled={downloading}>
+            {downloading ? "Preparing…" : "Download A4 PDF"}
+          </button>
+          <button className="download secondary" type="button" disabled={downloading} onClick={() => void onDownloadPng()}>
+            Download image
+          </button>
+        </div>
         <p className="fine">
-          Rendered on this computer with {language.font_family}. Nothing is uploaded.
+          Rendered on this computer. A handwriting photo and a page photo stay in this session. Nothing is sent away.
         </p>
       </form>
 
