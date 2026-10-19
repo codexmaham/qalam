@@ -19,7 +19,7 @@ This first version is the text path: typed notes, a live page, and a PDF. Voice 
 - Put a name and a date on the sheet.
 - Download a multi-page A4 PDF, or a PNG of the page.
 - Pick a handwriting style. The default is the neat school hand. Change it with one line in [`backend/qalam/styles/config.py`](backend/qalam/styles/config.py): `DEFAULT_STYLE_ID`.
-- Upload a photo of your own page. Qalam straightens it, finds the ruled lines, and writes on those lines.
+- Upload a photo of your own page. Qalam straightens it, finds the ruled lines, and writes on the empty ones. A full page is left as it is.
 - Upload a handwriting sample, or fill the printed template sheet, and new text is set from that hand.
 - Add a language by adding a font and a block of config. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -55,11 +55,11 @@ The reliable way to use your own letters is the **handwriting sheet**. Print it,
 
 ## Your own page
 
-Leave the paper blank and you get a white A4 sheet with the usual rules. Upload a photo of a notebook page and that photo becomes the paper: Qalam straightens the perspective, finds the ruled lines, and sizes the handwriting so the x-height fits between them. Lines that already contain pen ink are skipped, and the new text starts on the first free line. The ink is the pen already on the page, or the style's ink when the page is blank, multiplied in with a little grain so the paper and the light stay visible. Download the result as a PNG or a PDF.
+Leave the paper blank and you get a white A4 sheet with the usual rules. Upload a photo of a notebook page and that photo becomes the paper. Qalam straightens the perspective and finds the ruled lines. Handwriting sits on those rules, baseline on the line, starting just to the right of the red margin, and the x-height is fitted to the gap. Lines that already contain pen ink are skipped. On a page with no rules, the line spacing is taken from the writing already there, and new text is placed only where a whole line is empty, usually below the last ink. When the page is full, nothing new is written and the note says so. The ink is the pen already on the page, or the style's ink when the page is blank, with a little grain and variation in the stroke so it reads as a pen. Download the result as a PNG or a PDF.
 
-![Writing on a photographed blank ruled page](samples/on-your-page.png)
+![A paragraph on a photographed blank page, on the rules and inside the margin](samples/on-your-page.png)
 
-![The same hand, starting after the lines that are already written](samples/on-your-page-occupied.png)
+![A page that is already full, so nothing new is written](samples/on-your-page-occupied.png)
 
 The preset photographs live in [`backend/assets/handwriting-samples/`](backend/assets/handwriting-samples/README.md), separate from the fonts. They may have come from the internet. Replace them with samples the maintainer owns before a public release if the licence is unclear, then run `python3 scripts/build_presets.py`.
 

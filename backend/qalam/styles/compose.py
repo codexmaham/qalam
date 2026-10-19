@@ -16,7 +16,7 @@ from qalam.renderer.engine import FontHandwritingRenderer
 from qalam.renderer.jitter import apply_jitter, rng_for
 from qalam.renderer.paint import draw_glyphs, measure_width
 from qalam.renderer.segment import dominant_script, segment
-from qalam.renderer.templates import PageGeometry, a4_px, make_page, mm
+from qalam.renderer.templates import PageGeometry, a4_px, make_page
 from qalam.styles.model import GlyphVariant, HandwritingStyle
 from qalam.styles.pagephoto import PreparedPage
 
@@ -93,17 +93,36 @@ def _blit(page: Image.Image, mask: np.ndarray, x: int, y: int, rgb: tuple[int, i
     page.alpha_composite(image.crop((src_x, src_y, src_x + crop_w, src_y + crop_h)), (dest_x, dest_y))
 
 
-def _multiply(page: Image.Image, overlay: Image.Image, textured: bool = False) -> None:
+def _inkify(overlay: Image.Image) -> Image.Image:
+    """Break a flat font fill into pen ink: grain, a few thin spots, a harder edge.
+
+    Thin strokes stay dark. Grain and a sparse gap pattern sit inside the
+    stroke, and the soft halo loses some pixels so the edge is not a perfect
+    outline. The pattern depends only on the page size.
+    """
+
+    arr = np.array(overlay)
+    alpha = arr[:, :, 3].astype(np.float32) / 255.0
+    height, width = alpha.shape
+    ys, xs = np.indices((height, width))
+    grain = ((xs * 17 + ys * 13) % 29) / 28.0
+    # Antialiased stems are only partly covered. Lift the body toward solid
+    # ink, then let grain and a few gaps break the flat fill.
+    core = np.clip((alpha - 0.04) / 0.62, 0.0, 1.0) ** 0.8
+    textured = core * (0.84 + 0.16 * grain)
+    gap = ((xs * 5 + ys * 3) % 17 == 0) & (((xs * 3 + ys * 11) % 13) > 8) & (alpha > 0.3)
+    textured = np.where(gap, textured * 0.4, textured)
+    fringe = (alpha > 0.02) & (alpha < 0.22)
+    drop = fringe & (((xs + ys * 3) % 3) == 0)
+    textured = np.where(drop, 0.0, textured)
+    arr[:, :, 3] = np.clip(textured * 255.0, 0, 255).astype(np.uint8)
+    return Image.fromarray(arr, "RGBA")
+
+
+def _multiply(page: Image.Image, overlay: Image.Image) -> None:
     base = np.array(page).astype(np.float32)
     over = np.array(overlay).astype(np.float32)
     alpha = over[:, :, 3:4] / 255.0
-    if textured:
-        height, width = alpha.shape[:2]
-        xs = np.arange(width, dtype=np.float32)
-        ys = np.arange(height, dtype=np.float32)
-        # Deterministic paper grain, so the same note always prints the same.
-        grain = ((xs[None, :] * 13 + ys[:, None] * 7) % 17) / 16.0
-        alpha = alpha * (0.82 + 0.18 * grain)[..., None]
     ink = over[:, :, :3]
     paper = base[:, :, :3]
     mixed = paper * (1 - alpha) + (paper * ink / 255.0) * alpha
@@ -136,18 +155,26 @@ def render_styled(
 
     if photo is not None and request.ink_id == "sample" and photo.pen_rgb:
         rgb = photo.pen_rgb
-        alpha = 0.8
+        alpha = 0.94
     elif request.ink_id == "sample":
         rgb = style.stats.ink_rgb
-        alpha = 0.8 if photo is not None else 0.94
+        alpha = 0.94
     else:
         ink = ink_by_id(request.ink_id)
         rgb = ink["rgb"]
-        alpha = min(ink["alpha"], 0.86) if photo is not None else ink["alpha"]
+        alpha = ink["alpha"]
 
     pages: list[Image.Image] = []
     line_mm = fonts.registry.font(language.font).line_mm
     page, slots, line_h = _open_page(request, language.direction, photo, line_mm)
+    if photo is not None and not slots:
+        rgb_page = page.image.convert("RGB")
+        return RenderResult(
+            pages=[rgb_page],
+            truncated=bool(text.strip()),
+            width=rgb_page.width,
+            height=rgb_page.height,
+        )
     _header(fonts, page, request, language, rgb, alpha, photo)
     slot = 0
     paragraphs = text.split("\n")
@@ -161,9 +188,12 @@ def render_styled(
         if len(pages) + 1 >= request.max_pages:
             overflow = True
             return False
-        _number(fonts, page, len(pages) + 1, request.dpi)
+        _number(fonts, page, len(pages) + 1, request.dpi, photo)
         pages.append(page.image)
         page, slots, line_h = _open_page(request, language.direction, photo, line_mm)
+        if not slots:
+            overflow = True
+            return False
         _header(fonts, page, request, language, rgb, alpha, photo)
         slot = 0
         return True
@@ -206,7 +236,7 @@ def render_styled(
                 if not newline():
                     break
     if all(existing is not page.image for existing in pages):
-        _number(fonts, page, len(pages) + 1, request.dpi)
+        _number(fonts, page, len(pages) + 1, request.dpi, photo)
         pages.append(page.image)
     rgb_pages = [p.convert("RGB") for p in pages] or [page.image.convert("RGB")]
     return RenderResult(
@@ -233,19 +263,40 @@ def _open_page(request, direction, photo: PreparedPage | None, line_mm: float):
     # Size comes from the rule pitch, not from the gap between the empty lines we keep.
     line_h = max(8, int(round(pitch * height)))
     occupied = photo.occupied if len(photo.occupied) == len(photo.lines) else [False] * len(photo.lines)
-    chosen = [y for y, taken in zip(photo.lines, occupied) if not taken and 0.05 < y < 0.97]
-    if len(chosen) < 2:
-        chosen = [y for y in photo.lines if 0.05 < y < 0.97]
+    # Only lines that are actually empty. A full page stays blank.
+    chosen = [y for y, taken in zip(photo.lines, occupied) if not taken and 0.03 < y < 0.975]
     baselines = []
     for y in chosen:
         row = int(round(y * height))
         if not baselines or row - baselines[-1] > 2:
             baselines.append(row)
-    if len(baselines) < 2:
-        baselines = [int(height * y) for y in (0.18, 0.26, 0.34, 0.42, 0.50, 0.58, 0.66, 0.74, 0.82, 0.90)]
-        line_h = int(height * 0.045)
-    left = mm(request.dpi, 22) if direction != "rtl" else mm(request.dpi, 14)
-    right = width - mm(request.dpi, 14) if direction != "rtl" else width - mm(request.dpi, 22)
+    gap = max(8, int(round(line_h * 0.22)))
+    if direction != "rtl":
+        if 0.04 < photo.margin_x < 0.45:
+            left = int(round(photo.margin_x * width)) + gap
+        else:
+            left = int(round(width * 0.09))
+        right = width - int(round(width * 0.06))
+    else:
+        if photo.margin_x > 0.55:
+            right = int(round(photo.margin_x * width)) - gap
+        else:
+            right = width - int(round(width * 0.09))
+        left = int(round(width * 0.06))
+    if right - left < line_h * 4:
+        left, right = int(width * 0.08), int(width * 0.92)
+    if not baselines:
+        page = PageGeometry(
+            image=image,
+            kind="flow",
+            left=left,
+            right=right,
+            top=0,
+            bottom=0,
+            line_height=line_h,
+            baseline_offset=0,
+        )
+        return page, [], line_h
     page = PageGeometry(
         image=image,
         kind="flow",
@@ -419,7 +470,8 @@ def _draw_line(fonts, page, pieces, baseline, indent, language, style, x_height,
                 if payload == "glyph" and style.has_char(ch):
                     variants = style.glyphs[ch]
                     variant = variants[rng.randrange(len(variants))]
-                    jitter = 1 + rng.uniform(-0.035, 0.035)
+                    span = 0.09 if photo else 0.035
+                    jitter = 1 + rng.uniform(-span, span)
                     raster = _raster(variant, x_height, jitter)
                     if raster is not None:
                         mask, base, left = raster
@@ -437,9 +489,13 @@ def _draw_line(fonts, page, pieces, baseline, indent, language, style, x_height,
                     )
                 x += advance
             continue
+        if photo:
+            rng = rng_for(style.id, "pen", str(para_index), str(piece.get("index", 0)), piece["text"])
+            for glyph in piece["glyphs"]:
+                glyph.scale *= rng.uniform(0.90, 1.10)
         draw_glyphs(overlay, piece["glyphs"], origin, baseline, piece["px"], fonts.library, rgb, alpha)
     if photo:
-        _multiply(page.image, overlay, textured=True)
+        _multiply(page.image, _inkify(overlay))
     else:
         page.image.alpha_composite(overlay)
 
@@ -474,5 +530,8 @@ def _header(fonts, page, request, language, rgb, alpha, photo):
     fonts._draw_header(page, request, language, px, ink)
 
 
-def _number(fonts, page, number, dpi):
+def _number(fonts, page, number, dpi, photo):
+    # A page number is a clean font and can land on ink. The photo is the page.
+    if photo is not None:
+        return
     fonts._stamp_page_number(page, number, dpi)

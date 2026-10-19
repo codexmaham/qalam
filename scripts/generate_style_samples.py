@@ -93,7 +93,10 @@ def main() -> None:
     blank_id = renderer.styles.remember_page(blank)
     written = renderer.render(
         RenderRequest(
-            text="Pack my box with five dozen liquor jugs.",
+            text=(
+                "Pack my box with five dozen liquor jugs. The quick brown fox jumps "
+                "over the lazy dog, then sits down to finish the rest of the homework."
+            ),
             language_id="en",
             ink_id="sample",
             style_id="school-neat",
@@ -102,7 +105,19 @@ def main() -> None:
         )
     )
     written.pages[0].save(OUT / "on-your-page.png", format="PNG", optimize=True)
-    print("on-your-page", written.pages[0].size, "pitch", round(blank.pitch, 4), "free", sum(not t for t in blank.occupied))
+    print(
+        "on-your-page",
+        written.pages[0].size,
+        "pitch",
+        round(blank.pitch, 4),
+        "margin",
+        round(blank.margin_x, 3),
+        "first",
+        round(blank.lines[0], 4) if blank.lines else None,
+        "free",
+        sum(not taken for taken in blank.occupied),
+        blank.note,
+    )
 
     photo = prepare_page((SOURCES / "style4-school-neat-a_32f2.jpg").read_bytes())
     page_id = renderer.styles.remember_page(photo)
@@ -126,6 +141,9 @@ def main() -> None:
         sum(not t for t in photo.occupied),
         "pen",
         photo.pen_rgb,
+        "ruled",
+        photo.ruled,
+        photo.note,
     )
 
     font = str(FONTS_DIR / "PatrickHand-Regular.ttf")
