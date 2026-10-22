@@ -29,8 +29,43 @@ TEMPLATES: list[dict] = [
     {
         "id": "square-grid",
         "name": "Square grid",
-        "description": "Open squares in the style of genkō yōshi and wongoji.",
+        "description": "Open squares for character practice.",
     },
+    {
+        "id": "urdu-copy",
+        "name": "Urdu copy",
+        "description": "Headline, dotted guide, and baseline for Urdu.",
+    },
+    {
+        "id": "genko",
+        "name": "Genkō yōshi",
+        "description": "Japanese manuscript boxes with a center gutter.",
+    },
+    {
+        "id": "wongoji",
+        "name": "Wongoji",
+        "description": "Korean manuscript squares with a red margin.",
+    },
+    {
+        "id": "graph",
+        "name": "Graph",
+        "description": "Maths squares.",
+    },
+    {
+        "id": "worksheet",
+        "name": "Worksheet",
+        "description": "Name, date, and class, then ruled lines.",
+    },
+]
+
+PAGES = [
+    {"id": "a4", "name": "A4"},
+    {"id": "letter", "name": "US Letter"},
+]
+MARGINS = [
+    {"id": "narrow", "name": "Narrow"},
+    {"id": "standard", "name": "Standard"},
+    {"id": "wide", "name": "Wide"},
 ]
 
 INKS: list[dict] = [

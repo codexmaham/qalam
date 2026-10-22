@@ -1,5 +1,9 @@
 # Qalam
 
+[![CI](https://github.com/codexmaham/qalam/actions/workflows/ci.yml/badge.svg)](https://github.com/codexmaham/qalam/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/code-MIT-blue.svg)](LICENSE)
+[![Fonts: OFL](https://img.shields.io/badge/fonts-OFL-lightgrey.svg)](backend/fonts/OFL.txt)
+
 **Speak it. See it handwritten. Print it.**
 
 Qalam (قلم, a pen) turns a lesson into a notebook page. You type or paste the text, pick a language and a paper, and print an A4 PDF. The writing is shaped properly for each script, then nudged a little so it does not look like a font stamped in a straight line.
@@ -14,10 +18,13 @@ You can type the lesson, or speak it. Whisper transcribes on the same machine, a
 
 - Type or paste text and watch a notebook page update.
 - Choose a language. Right-to-left scripts are set right to left, and complex scripts are shaped with HarfBuzz, not drawn character by character.
-- Pick the paper: single-ruled, four-line English copy, tianzige (the Chinese character grid), or an open square grid in the spirit of genkō yōshi and wongoji.
-- Pick an ink: ballpoint blue, black, navy, green, red, or pencil.
-- Put a name and a date on the sheet.
-- Download a multi-page A4 PDF, or a PNG of the page.
+- Pick the paper: single-ruled, four-line English copy, Urdu copy, graph, a worksheet with name, date, and class, tianzige, genkō yōshi, wongoji, or an open square grid.
+- Pick the page: A4 or US Letter. Pick the red margin: narrow, standard, or wide.
+- Pick an ink and a pen thickness: ballpoint blue, black, navy, green, red, or pencil.
+- Put a name, a date, and a class on the sheet.
+- Mark up a lesson: `# Heading`, `- bullet`, `---`, `__word__`, `x^2`, `$1/2$`.
+- Print a dotted practice sheet of letters or words for the language.
+- Download a multi-page PDF, or a PNG of the page. A4 and Letter both export.
 - Pick a handwriting style. The default is the neat school hand. Change it with one line in [`backend/qalam/styles/config.py`](backend/qalam/styles/config.py): `DEFAULT_STYLE_ID`.
 - Upload a photo of your own page. Qalam straightens it, finds the ruled lines, and writes on the empty ones. A full page is left as it is.
 - Upload a handwriting sample, or fill the printed template sheet, and new text is set from that hand. The upload becomes your default immediately, for Notes, Voice, and PDF, and it is kept in `~/.local/share/qalam`.
@@ -35,6 +42,7 @@ The page can be set in a bundled font, or in a style measured from a photograph.
 | Blue quick notes | Fast notes in blue. |
 | Black print notes | Upright print in black. |
 | Qalam fonts | The original multilingual fonts, one per script. |
+| Stroke hand | A Graves recurrent network that draws Latin letters as pen strokes. Other scripts stay on the fonts. |
 
 ![Neat school notes, the default](samples/school-neat.png)
 
@@ -44,7 +52,11 @@ The page can be set in a bundled font, or in a style measured from a photograph.
 
 ![Black print notes](samples/print-notes.png)
 
-An uploaded sample is saved on this computer and selected for every new page until you choose **Use Neat school notes**. The preset itself stays the one line in `config.py`; your hand is a file next to it, not a change to that line.
+An uploaded sample is saved on this computer and selected for every new page until you choose **Use Neat school notes**. Name it before you upload. After it is read, the letters that were cut out are shown in a strip so you can see what the page will reuse. The preset itself stays the one line in `config.py`; your hand is a file next to it, not a change to that line.
+
+**Stroke hand** is the learned model. It is the public-domain Graves synthesis network, converted to NumPy and stored in [`backend/assets/stroke/weights.npz`](backend/assets/stroke/README.md). It runs on CPU, including an 8 GB M1, and the same seed repeats. **Another variation** draws the line again. The alphabet is Latin and has no uppercase Q or X. Urdu, Hindi, Chinese, and the other scripts keep the font renderer when this style is selected.
+
+![Stroke hand, one English sentence](samples/stroke-hand.png)
 
 **What quality to expect.** A photo of ordinary notes does not give clean, separable letters, especially when the writing is joined. Qalam still cuts the photo into contours and stores them, and it measures slant, x-height, letter spacing, stroke width, and ink colour. Those numbers tune the fallback font: the page is set in the closest bundled handwriting face, in the sample's ink, with the slant leaning the jitter. That is an honest limit of a CPU pipeline on an 8 GB machine, not a neural one-shot model.
 
@@ -77,6 +89,28 @@ export QALAM_WHISPER_DIR="$HOME/.cache/qalam/whisper"
 ```
 
 `tiny` is faster and less accurate. `small` is the better choice when the machine has room. English-only weights (names ending in `.en`) are refused, because the notebook is multilingual. ffmpeg has to be installed (`brew install ffmpeg` on a Mac) so a browser recording can be turned into 16 kHz mono audio. `pip install -r requirements.txt` installs faster-whisper; no compiler is required.
+
+## Practice sheets and paper
+
+**Letter practice** and **Word practice** fill the page with dotted writing on the paper that language is taught on. English uses four-line copy. Urdu uses a three-line copy sheet. Chinese uses tianzige. Japanese uses a genkō yōshi grid with a centre gutter. Korean uses wongoji, with the red line to the left of the squares. Hindi and Arabic use single-ruled paper. A language without its own sheet uses that language's sample, still dotted. Turn on **Dotted tracing line** for any note, not only the practice text.
+
+![English letters to trace](samples/practice-english.png)
+
+![Urdu words on copy lines](samples/practice-urdu.png)
+
+![Chinese characters on tianzige](samples/practice-tianzige.png)
+
+![Japanese kana on genkō yōshi](samples/practice-genko.png)
+
+![Korean syllables on wongoji](samples/practice-wongoji.png)
+
+Graph paper is a square grid for arithmetic. A worksheet has a name, date, and class line, then the lesson. A line can be a heading (`# Rivers`), a bullet (`- Nile`), a rule (`---`), an underline (`__word__`), or simple math (`x^2`, `$1/2$`). US Letter is a little wider and a little shorter than A4. The red margin moves when you pick narrow, standard, or wide.
+
+![Graph paper with a short sum](samples/graph-paper.png)
+
+![A worksheet with a heading, bullets, a rule, and math](samples/worksheet.png)
+
+![US Letter with a narrow margin](samples/letter-page.png)
 
 ![Urdu in Nastaliq on ruled paper](samples/urdu-single-ruled.png)
 
@@ -141,7 +175,35 @@ More sample pages: [Hindi](samples/hindi-single-ruled.png), [Arabic](samples/ara
 
 ## Quick start on a Mac
 
-These commands are the same on Linux. Use Python 3.11+ and Node 20+.
+```bash
+git clone https://github.com/codexmaham/qalam.git
+cd qalam
+./scripts/setup-macos.sh
+```
+
+That installs Python, ffmpeg, and Node with Homebrew, creates the virtualenv, and builds the site. Then:
+
+```bash
+cd backend
+source .venv/bin/activate
+python3 -m uvicorn qalam.main:app --host 127.0.0.1 --port 8000
+```
+
+Open http://127.0.0.1:8000. The API serves the built page from `frontend/dist`.
+
+The same commands work on Linux if Python 3.11+, Node 20+, and ffmpeg are already installed. Skip Homebrew and run the `venv` and `npm` steps from the script by hand.
+
+### Docker
+
+```bash
+docker compose up --build
+```
+
+The container listens on port 8000 and serves the built frontend. Handwriting you save, and the Whisper download, stay in two Docker volumes.
+
+### Development
+
+Use Python 3.11+ and Node 20+.
 
 ```bash
 git clone https://github.com/codexmaham/qalam.git
@@ -183,9 +245,11 @@ flowchart LR
   voice[Voice page] --> api
   api --> renderer[HandwritingRenderer]
   renderer --> fonts[Bundled fonts]
+  renderer --> strokes[Graves stroke model]
   renderer --> clone[Photo contours]
   renderer --> photo[Your page photo]
-  fonts --> pdf[A4 PDF and PNG]
+  fonts --> pdf[PDF and PNG]
+  strokes --> pdf
   clone --> pdf
   photo --> pdf
 ```
@@ -196,13 +260,36 @@ Fonts are stored in the repo under the SIL Open Font License so the app works wi
 
 ## Roadmap
 
-- A one-shot handwriting model behind the same renderer interface, so a single sample can synthesise strokes instead of cutting contours out of a photo. The contour composer is the stand-in that model would replace.
-- A stroke-synthesis engine for the bundled faces, so the writing varies like a hand instead of a font.
-- More paper: dotted tracing, graph, Urdu copy lines, and a worksheet header.
-- Vertical genkō yōshi.
+Shipped in this tree: dotted practice sheets, graph and worksheet paper, A4 and Letter, margins, pen thickness, homework markup, the Graves stroke style for Latin, a saved handwriting default with a glyph preview, local Whisper, and a Docker image.
+
+Still open:
+
+- Vertical genkō yōshi. The grid in this version is horizontal, with the centre gutter.
+- A stroke model for scripts other than Latin. Today those pages stay on the fonts.
+- A one-shot model that can invent a joined hand from one photo. The contour composer is still what a photograph uses.
 - Dictionary line-breaking for Thai.
 - Handwriting faces for the scripts that are still on a text face.
 - A PDF you can select and copy, not only print.
+
+## FAQ
+
+**Does my homework leave this computer?**
+No. The page, the photo, and the recording stay on the machine. The only download is the Whisper model, the first time you transcribe, into `~/.cache/qalam/whisper`.
+
+**Where is my handwriting saved?**
+In `~/.local/share/qalam` (or `QALAM_DATA_DIR`). Uploading a photo or a filled template makes that hand the default for Notes, Voice, and PDF. **Use Neat school notes** puts the preset back.
+
+**Why is Stroke hand Latin only?**
+The network was trained on Latin handwriting. Selecting it for Urdu or Chinese still writes the page, with the bundled font, so the lesson is not lost.
+
+**What does the dotted line do?**
+It keeps a faded dot of the same writing, so a student can trace it. Letter practice and word practice turn that on and choose the paper.
+
+**Can I put this on a server for a demo?**
+Yes. `docker compose up --build` serves the static site and the API on port 8000. Treat a public demo as public: do not upload a child's handwriting to it.
+
+**Who owns the fonts and the stroke model?**
+The code is MIT. The fonts are SIL Open Font License. The stroke weights are a public-domain conversion of the Graves model. See `backend/fonts/NOTICE.md` and `backend/assets/stroke/README.md`.
 
 ## Contributing
 

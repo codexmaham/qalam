@@ -8,15 +8,16 @@ model can replace this module later; callers only see `render`.
 from __future__ import annotations
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from qalam.models import RenderRequest, RenderResult
 from qalam.registry import ink_by_id
 from qalam.renderer.engine import FontHandwritingRenderer
 from qalam.renderer.jitter import apply_jitter, rng_for
-from qalam.renderer.paint import draw_glyphs, measure_width
+from qalam.renderer.markup import parse_line, split_lines
+from qalam.renderer.paint import _finish_ink, draw_glyphs, measure_width
 from qalam.renderer.segment import dominant_script, segment
-from qalam.renderer.templates import PageGeometry, a4_px, make_page
+from qalam.renderer.templates import PageGeometry, make_page, page_px
 from qalam.styles.model import GlyphVariant, HandwritingStyle
 from qalam.styles.pagephoto import PreparedPage
 
@@ -144,7 +145,7 @@ def render_styled(
     photo: PreparedPage | None,
 ) -> RenderResult:
     language = fonts.registry.language(request.language_id)
-    if photo is None and request.template_id in {"tianzige", "square-grid"}:
+    if photo is None and request.template_id in {"tianzige", "square-grid", "genko", "wongoji"}:
         return fonts.render(request)
 
     text = request.text.replace("\r\n", "\n").replace("\r", "\n")
@@ -177,7 +178,6 @@ def render_styled(
         )
     _header(fonts, page, request, language, rgb, alpha, photo)
     slot = 0
-    paragraphs = text.split("\n")
     overflow = False
 
     def newline() -> bool:
@@ -199,23 +199,33 @@ def render_styled(
         return True
 
     x_height = _x_height(request.template_id, line_h, style, photo is not None)
-    for para_index, paragraph in enumerate(paragraphs):
+    paragraphs = _blocks(text)
+    for para_index, block in enumerate(paragraphs):
+        if block["rule"]:
+            if slot >= len(slots) and not newline():
+                break
+            _draw_rule(page, slots[slot], rgb, request.thickness)
+            slot += 1
+            continue
+        paragraph = block["text"]
         if paragraph == "" and para_index < len(paragraphs) - 1:
             if not newline():
                 break
             continue
+        line_x = x_height * block["scale"]
         rest = paragraph
         first = True
+        consumed = 0
         while rest:
             if slot >= len(slots) and not newline():
                 rest = ""
                 break
-            indent = x_height * 1.1 if first and _width_of(fonts, style, rest, language, x_height, request, rgb) > page.width else 0
-            line, rest = _take(fonts, style, rest, language, page.width - indent, x_height, request, rgb)
+            indent = line_x * 1.1 if first and _width_of(fonts, style, rest, language, line_x, request, rgb) > page.width else 0
+            line, rest = _take(fonts, style, rest, language, page.width - indent, line_x, request, rgb)
             if not line and rest:
                 # A single piece wider than the page: draw it anyway and move on.
                 line, rest = rest[:1], rest[1:]
-            _draw_line(
+            placed = _draw_line(
                 fonts,
                 page,
                 line,
@@ -223,13 +233,16 @@ def render_styled(
                 indent,
                 language,
                 style,
-                x_height,
+                line_x,
                 rgb,
                 alpha,
                 request,
                 photo is not None,
                 para_index,
             )
+            drawn = "".join(piece["text"] for piece in line)
+            _underline(page, slots[slot], placed, _ranges(block["spans"], consumed, consumed + len(drawn)), rgb, request.thickness, language.direction)
+            consumed += len(drawn)
             slot += 1
             first = False
             if slot >= len(slots) and rest:
@@ -249,10 +262,17 @@ def render_styled(
 
 def _open_page(request, direction, photo: PreparedPage | None, line_mm: float):
     if photo is None:
-        page = make_page(request.template_id, request.dpi, direction, line_mm)
+        page = make_page(
+            request.template_id,
+            request.dpi,
+            direction,
+            line_mm,
+            getattr(request, "page_size", "a4"),
+            getattr(request, "margin", "standard"),
+        )
         return page, page.baselines(), page.line_height
 
-    width, height = a4_px(request.dpi)
+    width, height = page_px(request.dpi, getattr(request, "page_size", "a4"))
     resized = Image.fromarray(cv2_rgb(photo.image), "RGB").resize((width, height), Image.Resampling.LANCZOS)
     image = resized.convert("RGBA")
     pitch = photo.pitch
@@ -438,26 +458,27 @@ def _take(fonts, style, text, language, budget, x_height, request, rgb):
 
 def _draw_line(fonts, page, pieces, baseline, indent, language, style, x_height, rgb, alpha, request, photo, para_index):
     if not pieces:
-        return
+        return []
     overlay = Image.new("RGBA", page.image.size, (0, 0, 0, 0))
+    placed = []
     if language.direction == "rtl":
         pen = page.right - indent
         ordered = pieces
         # Place from the right, but draw each piece in its own box.
         widths = [p["width"] for p in ordered]
         cursor = pen
-        placed = []
         for piece, width in zip(ordered, widths):
             cursor -= width
             placed.append((piece, cursor))
     else:
         cursor = page.left + indent
-        placed = []
         for piece in pieces:
             placed.append((piece, cursor))
             cursor += piece["width"]
+    ink_spans: list[tuple[float, float, str]] = []
     for piece, origin in placed:
         if piece["kind"] == "space":
+            ink_spans.append((origin, piece["width"], piece["text"]))
             continue
         if piece["kind"] == "glyphs":
             x = origin
@@ -488,16 +509,20 @@ def _draw_line(fonts, page, pieces, baseline, indent, language, style, x_height,
                         alpha,
                     )
                 x += advance
+            ink_spans.append((origin, piece["width"], piece["text"]))
             continue
         if photo:
             rng = rng_for(style.id, "pen", str(para_index), str(piece.get("index", 0)), piece["text"])
             for glyph in piece["glyphs"]:
                 glyph.scale *= rng.uniform(0.90, 1.10)
         draw_glyphs(overlay, piece["glyphs"], origin, baseline, piece["px"], fonts.library, rgb, alpha)
+        ink_spans.append((origin, piece["width"], piece["text"]))
+    overlay = _finish_ink(overlay, bool(request.trace), float(request.thickness))
     if photo:
         _multiply(page.image, _inkify(overlay))
     else:
         page.image.alpha_composite(overlay)
+    return ink_spans
 
 
 def _shape_char(fonts, style, ch, language, x_height, request, salt: str):
@@ -520,6 +545,77 @@ def _shape_char(fonts, style, ch, language, x_height, request, salt: str):
         for glyph in glyphs:
             glyph.rotation += lean
     return glyphs, px, measure_width(glyphs)
+
+
+def _blocks(text: str) -> list[dict]:
+    blocks = []
+    for raw in split_lines(text):
+        runs = parse_line(raw)
+        if not runs:
+            blocks.append({"text": "", "scale": 1.0, "spans": [], "rule": False})
+            continue
+        if len(runs) == 1 and runs[0].rule:
+            blocks.append({"text": "", "scale": 1.0, "spans": [], "rule": True})
+            continue
+        pieces = []
+        spans = []
+        cursor = 0
+        scale = 1.0
+        for run in runs:
+            chunk = ("• " if run.bullet else "") + run.text
+            if run.underline and chunk:
+                spans.append((cursor, cursor + len(chunk)))
+            pieces.append(chunk)
+            cursor += len(chunk)
+            scale = max(scale, run.scale)
+        blocks.append({"text": "".join(pieces), "scale": scale, "spans": spans, "rule": False})
+    return blocks
+
+
+def _ranges(spans: list[tuple[int, int]], start: int, end: int) -> list[tuple[int, int]]:
+    chosen = []
+    for left, right in spans:
+        lo, hi = max(left, start), min(right, end)
+        if hi > lo:
+            chosen.append((lo - start, hi - start))
+    return chosen
+
+
+def _draw_rule(page, baseline: int, rgb, thickness: float) -> None:
+    y = baseline - max(2, page.line_height // 5)
+    ImageDraw.Draw(page.image).line(
+        (page.left, y, page.right, y),
+        fill=(*rgb, 200),
+        width=max(1, int(round(thickness))),
+    )
+
+
+def _underline(page, baseline, placed, ranges, rgb, thickness, direction: str) -> None:
+    if not ranges or not placed:
+        return
+    if direction == "rtl":
+        xs = [origin for origin, width, _text in placed]
+        xe = [origin + width for origin, width, _text in placed]
+        y = int(baseline + max(2, page.line_height * 0.08))
+        ImageDraw.Draw(page.image).line(
+            (min(xs), y, max(xe), y),
+            fill=(*rgb, 210),
+            width=max(1, int(round(thickness))),
+        )
+        return
+    cursor = 0
+    draw = ImageDraw.Draw(page.image)
+    y = int(baseline + max(2, page.line_height * 0.08))
+    for origin, width, text in placed:
+        piece_end = cursor + len(text)
+        for left, right in ranges:
+            lo, hi = max(left, cursor), min(right, piece_end)
+            if hi <= lo or not text:
+                continue
+            start = origin + width * ((lo - cursor) / len(text))
+            end = origin + width * ((hi - cursor) / len(text))
+            draw.line((start, y, end, y), fill=(*rgb, 210), width=max(1, int(round(thickness))))
+        cursor = piece_end
 
 
 def _header(fonts, page, request, language, rgb, alpha, photo):

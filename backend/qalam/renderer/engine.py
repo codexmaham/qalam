@@ -25,8 +25,9 @@ from qalam.registry import Language, Registry, ink_by_id, load_registry, templat
 from qalam.renderer.fonts import FontLibrary
 from qalam.renderer.jitter import ShapedGlyph, apply_jitter, rng_for
 from qalam.renderer.paint import draw_glyphs, draw_text, measure_width
+from qalam.renderer.markup import parse_line, split_lines
 from qalam.renderer.segment import CLUSTER_SCRIPTS, dominant_script, segment
-from qalam.renderer.templates import PageGeometry, a4_px, make_page, mm
+from qalam.renderer.templates import PageGeometry, make_page, mm, page_px
 
 MAX_CHARS = 12000
 LABEL = (120, 132, 156)
@@ -41,6 +42,8 @@ class Unit:
     width: float = 0
     is_space: bool = False
     is_break: bool = False
+    underline: bool = False
+    rule: bool = False
 
 
 class FontHandwritingRenderer:
@@ -113,6 +116,11 @@ class FontHandwritingRenderer:
                 request.ink_id,
                 request.name,
                 request.date,
+                request.class_name,
+                request.page_size,
+                request.margin,
+                f"{request.thickness:.2f}",
+                "trace" if request.trace else "",
                 str(request.dpi),
                 str(request.max_pages),
             ]
@@ -122,9 +130,16 @@ class FontHandwritingRenderer:
     def _render_locked(self, request: RenderRequest, language: Language, text: str, ink: dict) -> list[Image.Image]:
         self._overflowed = False
         font_cfg = self.registry.font(language.font)
-        px = self._font_px(request.template_id, font_cfg.line_mm, font_cfg.body_ratio, request.dpi)
+        px = self._font_px(request.template_id, font_cfg.line_mm, font_cfg.body_ratio, request.dpi, request.page_size)
         units = self._shape_units(text, language, px)
-        page = make_page(request.template_id, request.dpi, language.direction, font_cfg.line_mm)
+        page = make_page(
+            request.template_id,
+            request.dpi,
+            language.direction,
+            font_cfg.line_mm,
+            request.page_size,
+            request.margin,
+        )
         self._draw_header(page, request, language, px, ink)
         if page.kind == "grid":
             images = self._layout_grid(page, units, request, language, px, ink)
@@ -132,17 +147,23 @@ class FontHandwritingRenderer:
             images = self._layout_flow(page, units, request, language, px, ink, font_cfg.line_mm)
         return images
 
-    def _font_px(self, template_id: str, line_mm: float, body_ratio: float, dpi: int) -> float:
+    def _font_px(self, template_id: str, line_mm: float, body_ratio: float, dpi: int, page_size: str = "a4") -> float:
         if template_id == "four-line":
             return mm(dpi, 18) * 0.50
+        if template_id == "urdu-copy":
+            return mm(dpi, 16) * 0.55
+        if template_id == "graph":
+            return mm(dpi, 6.5) * 0.62
         if template_id == "tianzige":
-            return self._cell(dpi, 8) * 0.66
-        if template_id == "square-grid":
-            return self._cell(dpi, 10) * 0.66
+            return self._cell(dpi, 8, page_size) * 0.66
+        if template_id in {"square-grid", "wongoji"}:
+            return self._cell(dpi, 10, page_size) * 0.66
+        if template_id == "genko":
+            return self._cell(dpi, 20, page_size) * 0.62
         return max(8.0, mm(dpi, line_mm) * body_ratio)
 
-    def _cell(self, dpi: int, cols: int) -> int:
-        width, _height = a4_px(dpi)
+    def _cell(self, dpi: int, cols: int, page_size: str = "a4") -> int:
+        width, _height = page_px(dpi, page_size)
         content = width - mm(dpi, 14) * 2
         return max(8, content // cols)
 
@@ -168,30 +189,45 @@ class FontHandwritingRenderer:
 
     def _shape_units(self, text: str, language: Language, px: float) -> list[Unit]:
         shaped: list[Unit] = []
-        for index, raw in enumerate(segment(text)):
-            if raw == "\n":
+        index = 0
+        for raw_line in split_lines(text):
+            runs = parse_line(raw_line)
+            if not runs:
                 shaped.append(Unit(text="\n", font_id=language.font, script="Zyyy", is_break=True))
                 continue
-            font_id = self.pick_font(raw, language)
-            config = self.registry.font(font_id)
-            glyphs = self.library.shape(font_id, raw, px)
-            apply_jitter(
-                glyphs,
-                config.jitter,
-                config.jitter_amount,
-                px,
-                rng_for(language.id, font_id, str(index), raw),
-            )
-            shaped.append(
-                Unit(
-                    text=raw,
-                    font_id=font_id,
-                    script=dominant_script(raw),
-                    glyphs=glyphs,
-                    width=measure_width(glyphs),
-                    is_space=raw.strip() == "",
-                )
-            )
+            if len(runs) == 1 and runs[0].rule:
+                shaped.append(Unit(text="", font_id=language.font, script="Zyyy", rule=True))
+                shaped.append(Unit(text="\n", font_id=language.font, script="Zyyy", is_break=True))
+                continue
+            for run in runs:
+                body = f"• {run.text}" if run.bullet else run.text
+                size = px * run.scale
+                for raw in segment(body):
+                    font_id = self.pick_font(raw, language)
+                    config = self.registry.font(font_id)
+                    glyphs = self.library.shape(font_id, raw, size)
+                    apply_jitter(
+                        glyphs,
+                        config.jitter,
+                        config.jitter_amount,
+                        size,
+                        rng_for(language.id, font_id, str(index), raw),
+                    )
+                    shaped.append(
+                        Unit(
+                            text=raw,
+                            font_id=font_id,
+                            script=dominant_script(raw),
+                            glyphs=glyphs,
+                            width=measure_width(glyphs),
+                            is_space=raw.strip() == "",
+                            underline=run.underline,
+                        )
+                    )
+                    index += 1
+            shaped.append(Unit(text="\n", font_id=language.font, script="Zyyy", is_break=True))
+        if shaped and shaped[-1].is_break:
+            shaped.pop()
         return shaped
 
     def _shape_plain(self, text: str, font_id: str, px: float) -> list[ShapedGlyph]:
@@ -211,8 +247,13 @@ class FontHandwritingRenderer:
         left = mm(request.dpi, 14)
         right = page.image.width - mm(request.dpi, 14)
         rgb = ink["rgb"]
+        if request.template_id == "worksheet":
+            self._draw_worksheet_header(page, request, language, px, ink)
+            return
         name = request.name.strip()
         date = request.date.strip()
+        if request.class_name.strip():
+            name = f"{name}  ·  {request.class_name.strip()}".strip(" ·")
         if language.direction == "rtl":
             self._header_pair(page, "Date", date, left, baseline, label_px, px, language, rgb, align="left")
             self._header_pair(page, "Name", name, right, baseline, label_px, px, language, rgb, align="right")
@@ -225,6 +266,27 @@ class FontHandwritingRenderer:
             fill=(226, 214, 196, 255),
             width=max(1, request.dpi // 120),
         )
+
+    def _draw_worksheet_header(self, page, request, language, px, ink) -> None:
+        draw = ImageDraw.Draw(page.image)
+        width = page.image.width
+        fields = (
+            ("Name", request.name.strip()),
+            ("Date", request.date.strip()),
+            ("Class", request.class_name.strip()),
+        )
+        gap = mm(request.dpi, 6)
+        span = (width - mm(request.dpi, 28) - gap * 2) // 3
+        label_px = max(12, px * 0.5)
+        y = mm(request.dpi, 20)
+        x = mm(request.dpi, 14)
+        rgb = ink["rgb"]
+        for label, value in fields:
+            self._header_pair(page, label, value, x, y, label_px, px, language, rgb, align="left")
+            if not value:
+                rule_y = y + int(label_px * 0.2)
+                draw.line((x + int(label_px * 2.6), rule_y, x + span - 8, rule_y), fill=(196, 176, 160, 255), width=1)
+            x += span + gap
 
     def _header_pair(
         self,
@@ -267,7 +329,14 @@ class FontHandwritingRenderer:
                 ImageDraw.Draw(page.image).line((x, y, x + rule, y), fill=(196, 176, 160, 255), width=1)
 
     def _fresh_page(self, request: RenderRequest, language: Language, ink: dict, px: float, line_mm: float) -> PageGeometry:
-        page = make_page(request.template_id, request.dpi, language.direction, line_mm)
+        page = make_page(
+            request.template_id,
+            request.dpi,
+            language.direction,
+            line_mm,
+            request.page_size,
+            request.margin,
+        )
         self._draw_header(page, request, language, px, ink)
         return page
 
@@ -332,16 +401,26 @@ class FontHandwritingRenderer:
                 line, rest = self._take_line(rest, budget, px)
                 if not line:
                     break
-                self._draw_line(
-                    page,
-                    line,
-                    slots[slot],
-                    language.direction,
-                    indent if first_line else 0,
-                    px,
-                    rgb,
-                    alpha,
-                )
+                if len(line) == 1 and line[0].rule:
+                    rule_y = slots[slot] - px * 0.2
+                    ImageDraw.Draw(page.image).line(
+                        (page.left, rule_y, page.right, rule_y),
+                        fill=(*rgb, 180),
+                        width=max(1, int(round(request.thickness))),
+                    )
+                else:
+                    self._draw_line(
+                        page,
+                        line,
+                        slots[slot],
+                        language.direction,
+                        indent if first_line else 0,
+                        px,
+                        rgb,
+                        alpha,
+                        request.trace,
+                        request.thickness,
+                    )
                 slot += 1
                 first_line = False
         self._stamp_page_number(page, len(pages) + 1, request.dpi)
@@ -407,16 +486,29 @@ class FontHandwritingRenderer:
         px: float,
         rgb: tuple[int, int, int],
         alpha: float,
+        trace: bool = False,
+        thickness: float = 1.0,
     ) -> None:
+        draw = ImageDraw.Draw(page.image)
         if direction == "rtl":
             pen = page.right - indent
             for unit in line:
                 pen -= unit.width
-                draw_glyphs(page.image, unit.glyphs, pen, baseline, px, self.library, rgb, alpha)
+                draw_glyphs(
+                    page.image, unit.glyphs, pen, baseline, px, self.library, rgb, alpha, trace, thickness
+                )
+                if unit.underline and not unit.is_space:
+                    y = int(baseline + px * 0.18)
+                    draw.line((pen, y, pen + unit.width, y), fill=(*rgb, 200), width=max(1, int(round(thickness))))
         else:
             pen = page.left + indent
             for unit in line:
-                draw_glyphs(page.image, unit.glyphs, pen, baseline, px, self.library, rgb, alpha)
+                draw_glyphs(
+                    page.image, unit.glyphs, pen, baseline, px, self.library, rgb, alpha, trace, thickness
+                )
+                if unit.underline and not unit.is_space:
+                    y = int(baseline + px * 0.18)
+                    draw.line((pen, y, pen + unit.width, y), fill=(*rgb, 200), width=max(1, int(round(thickness))))
                 pen += unit.width
 
     def _layout_grid(
@@ -479,7 +571,7 @@ class FontHandwritingRenderer:
                     return pages
                 flush()
             row, col = divmod(cursor, page.cols)
-            self._draw_cell(page, item, row, col, px, rgb, alpha)
+            self._draw_cell(page, item, row, col, px, rgb, alpha, request.trace, request.thickness)
             cursor += 1
             index += 1
         flush()
@@ -494,12 +586,14 @@ class FontHandwritingRenderer:
         px: float,
         rgb: tuple[int, int, int],
         alpha: float,
+        trace: bool = False,
+        thickness: float = 1.0,
     ) -> None:
         pad = int(px * 1.6)
         width = max(8, int(unit.width) + pad * 2)
         height = max(8, int(px * 3.2))
         scratch = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        draw_glyphs(scratch, unit.glyphs, pad, height * 0.62, px, self.library, rgb, alpha)
+        draw_glyphs(scratch, unit.glyphs, pad, height * 0.62, px, self.library, rgb, alpha, trace, thickness)
         bbox = scratch.getbbox()
         if bbox is None:
             return
@@ -512,6 +606,7 @@ class FontHandwritingRenderer:
                 (max(1, int(crop.width * scale)), max(1, int(crop.height * scale))),
                 Image.Resampling.BICUBIC,
             )
-        x = page.grid_left + col * cell + (cell - crop.width) // 2
-        y = page.grid_top + row * cell + (cell - crop.height) // 2
+        origin_x, origin_y = page.cell_origin(row, col)
+        x = origin_x + (cell - crop.width) // 2
+        y = origin_y + (cell - crop.height) // 2
         page.image.alpha_composite(crop, (x, y))

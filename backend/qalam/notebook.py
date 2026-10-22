@@ -17,6 +17,7 @@ from PIL import Image
 from qalam.models import RenderRequest, RenderResult
 from qalam.registry import Registry, load_registry
 from qalam.renderer.engine import FontHandwritingRenderer
+from qalam.renderer.stroke_page import render_stroke_page
 from qalam.styles.compose import render_styled
 from qalam.styles.library import StyleLibrary
 
@@ -31,6 +32,12 @@ class NotebookRenderer:
     def render(self, request: RenderRequest) -> RenderResult:
         style = self.styles.resolve(request.style_id, request.handwriting_id)
         photo = self.styles.page(request.page_photo_id)
+        if style is not None and style.engine == "strokes" and photo is None:
+            language = self.registry.language(request.language_id)
+            if language.script == "Latn":
+                return render_stroke_page(self.fonts, request)
+            ink = request.ink_id if request.ink_id != "sample" else "blue"
+            return self.fonts.render(replace(request, ink_id=ink))
         if style is None and photo is None:
             if request.ink_id == "sample":
                 request = replace(request, ink_id="blue")
@@ -85,6 +92,13 @@ def _key(request: RenderRequest, style_id: str, shape) -> str:
             style_id,
             request.handwriting_id,
             request.page_photo_id,
+            request.page_size,
+            request.margin,
+            request.class_name,
+            f"{request.thickness:.2f}",
+            "trace" if request.trace else "",
+            str(request.seed),
+            f"{request.variation:.2f}",
             str(shape),
         ]
     )

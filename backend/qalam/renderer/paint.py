@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import freetype
-from PIL import Image, ImageDraw
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter
 
 from qalam.renderer.fonts import FontLibrary
 from qalam.renderer.jitter import ShapedGlyph
@@ -56,6 +57,22 @@ def _blit(page: Image.Image, sprite: Image.Image, x: int, y: int) -> None:
     page.alpha_composite(crop, (dest_x, dest_y))
 
 
+def _finish_ink(sprite: Image.Image, trace: bool, thickness: float) -> Image.Image:
+    if thickness >= 1.2:
+        alpha = sprite.getchannel("A").filter(ImageFilter.MaxFilter(3))
+        sprite.putalpha(alpha)
+    elif thickness <= 0.8:
+        alpha = sprite.getchannel("A").point(lambda value: value if value > 160 else int(value * 0.35))
+        sprite.putalpha(alpha)
+    if not trace:
+        return sprite
+    arr = np.array(sprite)
+    ys, xs = np.indices(arr.shape[:2])
+    keep = ((xs + ys) % 3) == 0
+    arr[..., 3] = np.where(keep, (arr[..., 3].astype(np.uint16) * 6 // 10).astype(np.uint8), 0)
+    return Image.fromarray(arr, "RGBA")
+
+
 def draw_glyphs(
     page: Image.Image,
     glyphs: list[ShapedGlyph],
@@ -65,6 +82,8 @@ def draw_glyphs(
     library: FontLibrary,
     rgb: tuple[int, int, int],
     ink_alpha: float,
+    trace: bool = False,
+    thickness: float = 1.0,
 ) -> None:
     """Draw glyphs left to right. HarfBuzz already returns visual order."""
 
@@ -92,7 +111,7 @@ def draw_glyphs(
                 )
                 draw_x = center_x - sprite.width / 2
                 draw_y = center_y - sprite.height / 2
-            _blit(page, sprite, int(round(draw_x)), int(round(draw_y)))
+            _blit(page, _finish_ink(sprite, trace, thickness), int(round(draw_x)), int(round(draw_y)))
         pen += glyph.x_advance
 
 

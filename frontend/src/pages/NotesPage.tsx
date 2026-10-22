@@ -4,6 +4,7 @@ import {
   downloadPng,
   downloadStyleSheet,
   fetchCatalogue,
+  fetchPractice,
   fetchPreview,
   fetchStyles,
   setDefaultStyle,
@@ -38,6 +39,14 @@ export function NotesPage() {
   const [text, setText] = useState("");
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
+  const [className, setClassName] = useState("");
+  const [pageSize, setPageSize] = useState("a4");
+  const [marginId, setMarginId] = useState("standard");
+  const [thickness, setThickness] = useState(1);
+  const [trace, setTrace] = useState(false);
+  const [seed, setSeed] = useState(1);
+  const [styleName, setStyleName] = useState("My handwriting");
+  const [glyphPreview, setGlyphPreview] = useState("");
   const [pages, setPages] = useState<string[]>([]);
   const [page, setPage] = useState(0);
   const [truncated, setTruncated] = useState(false);
@@ -94,6 +103,12 @@ export function NotesPage() {
           ink,
           name,
           date,
+          class_name: className,
+          page_size: pageSize,
+          margin: marginId,
+          thickness,
+          trace,
+          seed,
           ...styleFields(styleId),
           page_photo_id: pagePhotoId,
         },
@@ -117,7 +132,7 @@ export function NotesPage() {
       window.clearTimeout(handle);
       controller.abort();
     };
-  }, [catalogue, language, text, template, ink, name, date, styleId, pagePhotoId]);
+  }, [catalogue, language, text, template, ink, name, date, className, pageSize, marginId, thickness, trace, seed, styleId, pagePhotoId]);
 
   function chooseLanguage(next: Language) {
     const previous = language;
@@ -139,6 +154,12 @@ export function NotesPage() {
       ink,
       name,
       date,
+      class_name: className,
+      page_size: pageSize,
+      margin: marginId,
+      thickness,
+      trace,
+      seed,
       ...styleFields(styleId),
       page_photo_id: pagePhotoId,
     };
@@ -172,7 +193,7 @@ export function NotesPage() {
     setUploading("hand");
     setPreviewError(null);
     try {
-      const style = await uploadHandwriting(file, transcript, filledSheet ? "template" : "notes");
+      const style = await uploadHandwriting(file, transcript, filledSheet ? "template" : "notes", styleName);
       const fresh = await fetchStyles();
       setStyles(fresh.styles);
       setStyleId(style.id);
@@ -184,10 +205,25 @@ export function NotesPage() {
         /* the saved file in the data directory is the source of truth */
       }
       setInk("sample");
+      setGlyphPreview(style.preview || "");
     } catch (error) {
       setPreviewError(error instanceof Error ? error.message : "Could not read that handwriting.");
     } finally {
       setUploading(null);
+    }
+  }
+
+  async function onPractice(kind: "letters" | "words") {
+    if (!language) return;
+    setPreviewError(null);
+    try {
+      const sheet = await fetchPractice(language.id, kind);
+      setText(sheet.text);
+      setTemplate(sheet.template);
+      setTrace(true);
+      textWasSample.current = false;
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Could not build that practice sheet.");
     }
   }
 
@@ -315,9 +351,16 @@ export function NotesPage() {
             placeholder="Transcript, if this is a page of notes. One photo line per line."
             onChange={(event) => setTranscript(event.target.value)}
           />
+          <label className="field">
+            <span>Style name</span>
+            <input value={styleName} onChange={(event) => setStyleName(event.target.value)} placeholder="My handwriting" />
+          </label>
           <button className="quiet" type="button" onClick={() => void downloadStyleSheet()}>
             Download the handwriting sheet
           </button>
+          {glyphPreview && (
+            <img className="glyph-strip" src={`data:image/png;base64,${glyphPreview}`} alt="Letters cut from the handwriting sample" />
+          )}
         </fieldset>
 
         <fieldset>
@@ -375,18 +418,28 @@ export function NotesPage() {
             }}
           />
         </label>
-        <button
-          className="quiet"
-          type="button"
-          onClick={() => {
-            setText(language.sample);
-            textWasSample.current = true;
-          }}
-        >
-          Use the {language.name} sample
-        </button>
+        <div className="row-actions">
+          <button
+            className="quiet"
+            type="button"
+            onClick={() => {
+              setText(language.sample);
+              textWasSample.current = true;
+              setTrace(false);
+            }}
+          >
+            Use the {language.name} sample
+          </button>
+          <button className="quiet" type="button" onClick={() => void onPractice("letters")}>
+            Letter practice
+          </button>
+          <button className="quiet" type="button" onClick={() => void onPractice("words")}>
+            Word practice
+          </button>
+        </div>
+        <p className="note"># Heading, - bullet, --- rule, __word__ underline, x^2 and $1/2$.</p>
 
-        <div className="split">
+        <div className="split three">
           <label>
             Name
             <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Amina" />
@@ -394,6 +447,10 @@ export function NotesPage() {
           <label>
             Date
             <input value={date} onChange={(event) => setDate(event.target.value)} />
+          </label>
+          <label>
+            Class
+            <input value={className} onChange={(event) => setClassName(event.target.value)} placeholder="4B" />
           </label>
         </div>
 
@@ -415,6 +472,56 @@ export function NotesPage() {
             ))}
           </div>
         </fieldset>
+
+        <div className="split">
+          <label>
+            Page
+            <select value={pageSize} onChange={(event) => setPageSize(event.target.value)}>
+              {(catalogue.pages || [
+                { id: "a4", name: "A4" },
+                { id: "letter", name: "US Letter" },
+              ]).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Margin
+            <select value={marginId} onChange={(event) => setMarginId(event.target.value)}>
+              {(catalogue.margins || [
+                { id: "narrow", name: "Narrow" },
+                { id: "standard", name: "Standard" },
+                { id: "wide", name: "Wide" },
+              ]).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label className="field">
+          <span>Pen thickness {thickness.toFixed(1)}</span>
+          <input
+            type="range"
+            min={0.7}
+            max={1.8}
+            step={0.1}
+            value={thickness}
+            onChange={(event) => setThickness(Number(event.target.value))}
+          />
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={trace} onChange={(event) => setTrace(event.target.checked)} />
+          Dotted tracing line
+        </label>
+        {styleId === "stroke-hand" && (
+          <button className="quiet" type="button" onClick={() => setSeed((value) => value + 1)}>
+            Another variation
+          </button>
+        )}
 
         <fieldset>
           <legend>Ink</legend>
@@ -441,7 +548,7 @@ export function NotesPage() {
 
         <div className="actions">
           <button className="download" type="submit" disabled={downloading}>
-            {downloading ? "Preparing…" : "Download A4 PDF"}
+            {downloading ? "Preparing…" : "Download PDF"}
           </button>
           <button className="download secondary" type="button" disabled={downloading} onClick={() => void onDownloadPng()}>
             Download image

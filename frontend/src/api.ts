@@ -36,12 +36,15 @@ export type StyleInfo = {
   note: string;
   message?: string;
   default?: boolean;
+  preview?: string;
 };
 
 export type Catalogue = {
   languages: Language[];
   templates: Template[];
   inks: Ink[];
+  pages?: { id: string; name: string }[];
+  margins?: { id: string; name: string }[];
   default_style?: string;
 };
 
@@ -71,7 +74,14 @@ export type VoiceStatus = {
   error?: string;
 };
 
-const PRESET_STYLES = new Set(["qalam-fonts", "school-neat", "cursive-letter", "quick-notes", "print-notes"]);
+const PRESET_STYLES = new Set([
+  "qalam-fonts",
+  "school-neat",
+  "cursive-letter",
+  "quick-notes",
+  "print-notes",
+  "stroke-hand",
+]);
 
 export function styleFields(styleId: string): { style: string; handwriting_id: string } {
   if (PRESET_STYLES.has(styleId)) return { style: styleId, handwriting_id: "" };
@@ -96,6 +106,13 @@ export type NoteRequest = {
   style?: string;
   handwriting_id?: string;
   page_photo_id?: string;
+  page_size?: string;
+  margin?: string;
+  class_name?: string;
+  thickness?: number;
+  trace?: boolean;
+  seed?: number;
+  variation?: number;
 };
 
 export async function fetchStyles(): Promise<StyleCatalogue> {
@@ -171,12 +188,28 @@ export async function downloadStyleSheet(): Promise<void> {
   await saveBlob(response, "qalam-handwriting-sheet.png");
 }
 
-export async function uploadHandwriting(file: File, transcript: string, mode: "notes" | "template"): Promise<StyleInfo> {
+export async function fetchPractice(
+  language: string,
+  kind: "letters" | "words",
+): Promise<{ text: string; template: string; trace: boolean }> {
+  const response = await fetch(`/api/practice?language=${encodeURIComponent(language)}&kind=${kind}`);
+  if (!response.ok) {
+    throw new Error("Could not build that practice sheet.");
+  }
+  return response.json();
+}
+
+export async function uploadHandwriting(
+  file: File,
+  transcript: string,
+  mode: "notes" | "template",
+  name = "My handwriting",
+): Promise<StyleInfo> {
   const body = new FormData();
   body.append("file", file);
   body.append("transcript", transcript);
   body.append("mode", mode);
-  body.append("name", "My handwriting");
+  body.append("name", name.trim() || "My handwriting");
   const response = await fetch("/api/handwriting", { method: "POST", body });
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: response.statusText }));

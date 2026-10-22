@@ -49,12 +49,15 @@ python3 -m qalam.cli --language ur --template single-ruled --out page.png
 | --- | --- |
 | `backend/languages.toml` | Every language and font. This is the file you edit to add a language. |
 | `backend/fonts/` | The OFL font files, `OFL.txt`, and `NOTICE.md`. |
-| `backend/qalam/renderer/` | Shaping, jitter, notebook templates, and the A4 page. |
+| `backend/qalam/renderer/` | Shaping, jitter, markup, notebook templates, and the page. |
+| `backend/qalam/renderer/stroke.py` | The Graves stroke model. Latin only. |
+| `backend/qalam/practice.py` | Letter and word practice sheets. |
 | `backend/qalam/main.py` | The local HTTP API. |
 | `backend/qalam/voice.py` | Local Whisper transcription for the Voice page. |
 | `frontend/src/` | The Notes page and the Voice page. |
+| `docs/good-first-issues.md` | Small tasks that do not need a GPU. |
 
-`NotebookRenderer.render` is the function the API calls. It delegates to `FontHandwritingRenderer` for the bundled faces, and to the contour composer for a handwriting sample. A one-shot model should replace the composer and keep `render(RenderRequest) -> RenderResult` in `backend/qalam/models.py`.
+`NotebookRenderer.render` is the function the API calls. It delegates to `FontHandwritingRenderer` for the bundled faces, to the stroke model for Stroke hand in Latin, and to the contour composer for a handwriting sample. A one-shot model should replace the composer and keep `render(RenderRequest) -> RenderResult` in `backend/qalam/models.py`.
 
 The default handwriting style is one assignment, `DEFAULT_STYLE_ID`, in `backend/qalam/styles/config.py`. Preset photographs and their extracted contours live in `backend/assets/handwriting-samples/`. Rebuild them with `python3 scripts/build_presets.py` after replacing the photos.
 
@@ -82,6 +85,10 @@ The default handwriting style is one assignment, `DEFAULT_STYLE_ID`, in `backend
 ## Templates
 
 Templates are drawn in `backend/qalam/renderer/templates.py` and listed in `backend/qalam/registry.py`. A new template needs an `id` in both places and a branch in `make_page`. Grid templates put one grapheme in each cell. Arabic-script words stay whole so the letters keep joining, and the word is scaled to fit the cell.
+
+## Conduct
+
+The classroom rules for this project are in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## What not to depend on
 

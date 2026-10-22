@@ -14,10 +14,12 @@ from pydantic import BaseModel, Field
 from qalam import __version__
 from qalam.models import RenderRequest
 from qalam.notebook import NotebookRenderer
-from qalam.registry import INKS, TEMPLATES, load_registry
+from qalam.practice import practice_for
+from qalam.registry import INKS, MARGINS, PAGES, TEMPLATES, load_registry
 from qalam.styles.config import DEFAULT_STYLE_ID
 from qalam.styles.extract import analyse, ink_from_image, read_image
 from qalam.styles.pagephoto import prepare_page
+from qalam.styles.preview import glyph_strip
 from qalam.styles.sheet import analyse_sheet, render_sheet
 from qalam.voice import Transcript, VoiceError, WhisperTranscriber
 
@@ -45,6 +47,13 @@ class RenderIn(BaseModel):
     style: str = ""
     handwriting_id: str = ""
     page_photo_id: str = ""
+    page_size: str = "a4"
+    margin: str = "standard"
+    class_name: str = ""
+    thickness: float = 1.0
+    trace: bool = False
+    seed: int = 1
+    variation: float = 0.4
 
 
 def create_app(transcriber: WhisperTranscriber | None = None) -> FastAPI:
@@ -74,6 +83,8 @@ def create_app(transcriber: WhisperTranscriber | None = None) -> FastAPI:
             "languages": [item.to_public(registry.fonts) for item in registry.languages],
             "templates": [{k: t[k] for k in ("id", "name", "description")} for t in TEMPLATES],
             "inks": inks,
+            "pages": PAGES,
+            "margins": MARGINS,
             "default_style": notebook.styles.default_id,
         }
 
@@ -143,6 +154,9 @@ def create_app(transcriber: WhisperTranscriber | None = None) -> FastAPI:
         public["id"] = style_id
         public["default"] = True
         public["message"] = "Your handwriting is now the default"
+        strip = glyph_strip(style)
+        if strip:
+            public["preview"] = base64.b64encode(strip).decode("ascii")
         return public
 
     @app.post("/api/page-photo")
@@ -223,6 +237,14 @@ def create_app(transcriber: WhisperTranscriber | None = None) -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"default": chosen, "user_default": notebook.styles.user_default_id}
+
+    @app.get("/api/practice")
+    def practice(language: str, kind: str = "letters") -> dict:
+        try:
+            item = registry.language(language)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return practice_for(language, kind, item.sample, list(item.recommended))
 
     @app.get("/api/voice")
     def voice_status() -> dict:
@@ -326,6 +348,10 @@ def _render(body: RenderIn, dpi: int, max_pages: int):
             raise KeyError(f"Unknown template '{body.template}'")
         if body.ink not in ink_ok:
             raise KeyError(f"Unknown ink '{body.ink}'")
+        if body.page_size not in {item["id"] for item in PAGES}:
+            raise KeyError(f"Unknown page size '{body.page_size}'")
+        if body.margin not in {item["id"] for item in MARGINS}:
+            raise KeyError(f"Unknown margin '{body.margin}'")
         if body.style:
             notebook.styles.resolve(body.style, "")
     except KeyError as exc:
@@ -342,6 +368,13 @@ def _render(body: RenderIn, dpi: int, max_pages: int):
         style_id=body.style,
         handwriting_id=body.handwriting_id,
         page_photo_id=body.page_photo_id,
+        page_size=body.page_size,
+        margin=body.margin,
+        class_name=body.class_name,
+        thickness=body.thickness,
+        trace=body.trace,
+        seed=body.seed,
+        variation=body.variation,
     )
     try:
         return notebook.render(request)
@@ -351,4 +384,17 @@ def _render(body: RenderIn, dpi: int, max_pages: int):
         raise HTTPException(status_code=500, detail=f"Render failed: {exc}") from exc
 
 
+def _mount_static(application: FastAPI) -> None:
+    import os
+
+    raw = os.environ.get("QALAM_STATIC", "").strip()
+    root = Path(raw) if raw else Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    if not (root / "index.html").is_file():
+        return
+    from fastapi.staticfiles import StaticFiles
+
+    application.mount("/", StaticFiles(directory=root, html=True), name="ui")
+
+
 app = create_app()
+_mount_static(app)

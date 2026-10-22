@@ -18,6 +18,17 @@ from qalam.styles.pagephoto import PreparedPage
 
 ASSETS = BACKEND_ROOT / "assets" / "handwriting-samples"
 
+STROKE_STYLE = HandwritingStyle(
+    id="stroke-hand",
+    name="Stroke hand",
+    description="English written as pen strokes by a small recurrent network, with a new variation when you ask for one.",
+    fallback_font="caveat",
+    kind="sample",
+    engine="strokes",
+    stats=StyleStats(ink_rgb=(28, 36, 58)),
+    note="Latin only. Urdu, Hindi, Arabic, Chinese and the other scripts stay on the bundled fonts.",
+)
+
 FONT_STYLE = HandwritingStyle(
     id="qalam-fonts",
     name="Qalam fonts",
@@ -57,7 +68,7 @@ class StyleLibrary:
             self.presets[style.id] = style
 
     def known(self) -> list[HandwritingStyle]:
-        styles = [FONT_STYLE]
+        styles = [FONT_STYLE, STROKE_STYLE]
         for style_id in ("school-neat", "cursive-letter", "quick-notes", "print-notes"):
             if style_id in self.presets:
                 styles.append(self.presets[style_id])
@@ -70,7 +81,7 @@ class StyleLibrary:
     @property
     def default_id(self) -> str:
         saved = self._user_default
-        if saved and (saved in self.uploads or saved in self.presets or saved == "qalam-fonts"):
+        if saved and (saved in self.uploads or saved in self.presets or saved in {"qalam-fonts", "stroke-hand"}):
             return saved
         if DEFAULT_STYLE_ID in self.presets or DEFAULT_STYLE_ID == "qalam-fonts":
             return DEFAULT_STYLE_ID
@@ -94,6 +105,8 @@ class StyleLibrary:
         chosen = style_id or self.default_id
         if chosen in self.uploads:
             return self.uploads[chosen]
+        if chosen == "stroke-hand":
+            return STROKE_STYLE
         if chosen == "qalam-fonts":
             return None
         style = self.presets.get(chosen)
@@ -123,7 +136,7 @@ class StyleLibrary:
         if style_id == DEFAULT_STYLE_ID or style_id == "":
             self._write_default("")
             return self.default_id
-        if style_id in self.uploads or style_id in self.presets or style_id == "qalam-fonts":
+        if style_id in self.uploads or style_id in self.presets or style_id in {"qalam-fonts", "stroke-hand"}:
             self._write_default(style_id)
             return self.default_id
         raise KeyError(f"Unknown handwriting style '{style_id}'")

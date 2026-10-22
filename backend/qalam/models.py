@@ -22,6 +22,13 @@ class RenderRequest:
     style_id: str = ""
     handwriting_id: str = ""
     page_photo_id: str = ""
+    page_size: str = "a4"
+    margin: str = "standard"
+    class_name: str = ""
+    thickness: float = 1.0
+    trace: bool = False
+    seed: int = 1
+    variation: float = 0.4
 
 
 @dataclass
