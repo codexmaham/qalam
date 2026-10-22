@@ -380,7 +380,7 @@ select {
   border: 1px solid var(--line);
   border-radius: 10px;
 }
-.confirm { margin: 0; color: var(--accent); font-size: 0.92rem; }
+.confirm { margin: 0; color: var(--accent); font-size: 0.92rem; display: flex; flex-wrap: wrap; gap: 0.35rem 0.8rem; align-items: center; }
 .steps { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: 0.8rem; }
 .steps li { display: grid; grid-template-columns: auto 1fr; gap: 0.7rem; }
 .steps span {

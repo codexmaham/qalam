@@ -5,6 +5,7 @@ import {
   fetchPreview,
   fetchStyles,
   fetchVoice,
+  setDefaultStyle,
   styleFields,
   transcribeAudio,
   type Catalogue,
@@ -21,6 +22,7 @@ export function VoicePage() {
   const [template, setTemplate] = useState("four-line");
   const [styleId, setStyleId] = useState("school-neat");
   const [styleName, setStyleName] = useState("Neat school notes");
+  const [userDefaultId, setUserDefaultId] = useState("");
   const [model, setModel] = useState("base");
   const [text, setText] = useState("");
   const [name, setName] = useState("");
@@ -51,6 +53,7 @@ export function VoicePage() {
         setCatalogue(data);
         const chosen = styles.default || "school-neat";
         setStyleId(chosen);
+        setUserDefaultId(styles.user_default || "");
         setStyleName(styles.styles.find((item) => item.id === chosen)?.name || "Neat school notes");
         try {
           localStorage.setItem(STYLE_KEY, chosen);
@@ -158,6 +161,24 @@ export function VoicePage() {
       setError(err instanceof Error ? err.message : "Could not transcribe that recording.");
     } finally {
       setTranscribing(false);
+    }
+  }
+
+  async function useSchoolNotes() {
+    setError(null);
+    try {
+      const result = await setDefaultStyle("school-neat");
+      setUserDefaultId(result.user_default || "");
+      const next = result.default || "school-neat";
+      setStyleId(next);
+      setStyleName("Neat school notes");
+      try {
+        localStorage.setItem(STYLE_KEY, next);
+      } catch {
+        /* the data directory already has the preset */
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not change the default handwriting.");
     }
   }
 
@@ -301,6 +322,14 @@ export function VoicePage() {
             {downloading ? "Preparing…" : "Download A4 PDF"}
           </button>
         </div>
+        {userDefaultId && (
+          <p className="confirm">
+            Your handwriting is now the default
+            <button className="quiet" type="button" onClick={() => void useSchoolNotes()}>
+              Use Neat school notes
+            </button>
+          </p>
+        )}
         <p className="fine">
           Whisper {model} runs on this computer. The first recording downloads the model. Handwriting: {styleName}. Nothing is uploaded.
         </p>

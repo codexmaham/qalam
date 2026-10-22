@@ -254,6 +254,24 @@ def test_uploaded_hand_becomes_the_default(tmp_path, monkeypatch):
     styles = client.get("/api/styles").json()
     assert styles["default"] == body["id"]
     assert styles["user_default"] == body["id"]
+    # A new page, a preview, and a PDF omit the style. The saved hand is used.
+    bare = client.post("/api/preview", json={"text": "Hello", "language": "en", "ink": "black"})
+    named = client.post(
+        "/api/preview",
+        json={"text": "Hello", "language": "en", "ink": "black", "handwriting_id": body["id"]},
+    )
+    assert bare.status_code == 200 and named.status_code == 200
+    assert bare.json()["pages"] == named.json()["pages"]
+    preset = client.post(
+        "/api/preview",
+        json={"text": "Hello", "language": "en", "ink": "black", "style": "school-neat"},
+    )
+    assert preset.status_code == 200
+    assert client.get("/api/styles").json()["default"] == body["id"]
+    pdf = client.post("/api/pdf", json={"text": "Hello", "language": "en", "ink": "black"})
+    assert pdf.status_code == 200
+    assert pdf.content[:4] == b"%PDF"
+    assert client.get("/api/styles").json()["default"] == body["id"]
     reloaded = StyleLibrary(data_dir=tmp_path)
     assert reloaded.default_id == body["id"]
     assert reloaded.user_default_id == body["id"]
@@ -272,6 +290,28 @@ def test_uploaded_hand_becomes_the_default(tmp_path, monkeypatch):
     assert again.user_default_id == ""
     assert (tmp_path / "handwriting" / f"{body['id']}.json").is_file()
     assert again.resolve("", body["id"]).id == body["id"]
+
+
+def test_filled_sheet_becomes_the_default(tmp_path, monkeypatch):
+    from qalam.main import notebook
+
+    library = StyleLibrary(data_dir=tmp_path)
+    monkeypatch.setattr(notebook, "styles", library)
+    sheet = client.get("/api/style-sheet")
+    assert sheet.status_code == 200
+    uploaded = client.post(
+        "/api/handwriting",
+        files={"file": ("sheet.png", sheet.content, "image/png")},
+        data={"mode": "template", "name": "Sheet hand", "transcript": ""},
+    )
+    assert uploaded.status_code == 200
+    body = uploaded.json()
+    assert body["message"] == "Your handwriting is now the default"
+    assert body["default"] is True
+    assert client.get("/api/styles").json()["default"] == body["id"]
+    reloaded = StyleLibrary(data_dir=tmp_path)
+    assert reloaded.default_id == body["id"]
+    assert reloaded.resolve(body["id"]).name == "Sheet hand"
 
 
 LONG_PARAGRAPH = (
