@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,13 +19,19 @@ from qalam.styles.config import DEFAULT_STYLE_ID
 from qalam.styles.extract import analyse, ink_from_image, read_image
 from qalam.styles.pagephoto import prepare_page
 from qalam.styles.sheet import analyse_sheet, render_sheet
+from qalam.voice import Transcript, VoiceError, WhisperTranscriber
 
 PREVIEW_DPI = 108
 PDF_DPI = 150
 MAX_UPLOAD = 8 * 1024 * 1024
+MAX_AUDIO = 25 * 1024 * 1024
 
 registry = load_registry()
 notebook = NotebookRenderer(registry)
+
+
+class StyleDefaultIn(BaseModel):
+    style: str = ""
 
 
 class RenderIn(BaseModel):
@@ -40,8 +47,9 @@ class RenderIn(BaseModel):
     page_photo_id: str = ""
 
 
-def create_app() -> FastAPI:
+def create_app(transcriber: WhisperTranscriber | None = None) -> FastAPI:
     app = FastAPI(title="Qalam", version=__version__)
+    voice = transcriber or WhisperTranscriber()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -73,6 +81,7 @@ def create_app() -> FastAPI:
     def styles() -> dict:
         return {
             "default": notebook.styles.default_id,
+            "user_default": notebook.styles.user_default_id,
             "styles": [style.to_public() for style in notebook.styles.known()],
         }
 
@@ -129,9 +138,11 @@ def create_app() -> FastAPI:
                     )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Could not read that handwriting: {exc}") from exc
-        style_id = notebook.styles.remember_style(style)
+        style_id = notebook.styles.remember_style(style, make_default=True)
         public = style.to_public()
         public["id"] = style_id
+        public["default"] = True
+        public["message"] = "Your handwriting is now the default"
         return public
 
     @app.post("/api/page-photo")
@@ -205,6 +216,35 @@ def create_app() -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
+    @app.post("/api/style-default")
+    def style_default(body: StyleDefaultIn) -> dict:
+        try:
+            chosen = notebook.styles.set_default(body.style)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"default": chosen, "user_default": notebook.styles.user_default_id}
+
+    @app.get("/api/voice")
+    def voice_status() -> dict:
+        return voice.status()
+
+    @app.post("/api/transcribe")
+    async def transcribe(file: UploadFile = File(...), language: str = Form("")) -> dict:
+        data = await file.read()
+        if not data:
+            raise HTTPException(status_code=400, detail="The recording was empty.")
+        if len(data) > MAX_AUDIO:
+            raise HTTPException(status_code=400, detail="That recording is larger than 25 MB.")
+        suffix = Path(file.filename or "audio.webm").suffix.lower()
+        known = {item.id for item in registry.languages}
+        if language and language not in known:
+            raise HTTPException(status_code=400, detail=f"Unknown language '{language}'.")
+        try:
+            result = voice.transcribe(data, suffix, language or None, known)
+        except VoiceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return _transcript_body(result)
+
     @app.get("/")
     def root() -> dict:
         return {
@@ -224,6 +264,24 @@ async def _read_upload(file: UploadFile) -> bytes:
     if len(data) > MAX_UPLOAD:
         raise HTTPException(status_code=400, detail="That image is larger than 8 MB.")
     return data
+
+
+def _transcript_body(result: Transcript) -> dict:
+    language = None
+    if result.language_id:
+        try:
+            language = registry.language(result.language_id)
+        except KeyError:
+            language = None
+    return {
+        "text": result.text,
+        "whisper_language": result.whisper_language,
+        "language_id": result.language_id,
+        "language_name": language.name if language else "",
+        "direction": language.direction if language else "ltr",
+        "template": language.recommended[0] if language and language.recommended else "single-ruled",
+        "model": result.model,
+    }
 
 
 def _jpeg_preview(prepared) -> str:

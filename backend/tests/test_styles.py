@@ -233,6 +233,47 @@ def test_styles_api_and_uploads():
     assert "empty" in photo.json()["note"] or "ruled" in photo.json()["note"]
 
 
+def test_uploaded_hand_becomes_the_default(tmp_path, monkeypatch):
+    from qalam.main import notebook
+
+    library = StyleLibrary(data_dir=tmp_path)
+    monkeypatch.setattr(notebook, "styles", library)
+    image = np.full((120, 280, 3), 255, np.uint8)
+    cv2.line(image, (30, 70), (220, 70), (25, 25, 30), 4)
+    ok, buf = cv2.imencode(".png", image)
+    assert ok
+    uploaded = client.post(
+        "/api/handwriting",
+        files={"file": ("hand.png", buf.tobytes(), "image/png")},
+        data={"transcript": "", "mode": "notes", "name": "My handwriting"},
+    )
+    assert uploaded.status_code == 200
+    body = uploaded.json()
+    assert body["message"] == "Your handwriting is now the default"
+    assert body["default"] is True
+    styles = client.get("/api/styles").json()
+    assert styles["default"] == body["id"]
+    assert styles["user_default"] == body["id"]
+    reloaded = StyleLibrary(data_dir=tmp_path)
+    assert reloaded.default_id == body["id"]
+    assert reloaded.user_default_id == body["id"]
+    assert reloaded.resolve(body["id"]).name == "My handwriting"
+    page = NotebookRenderer(styles=reloaded).render(
+        RenderRequest(text="Hello", language_id="en", handwriting_id=body["id"], ink_id="sample", dpi=72)
+    )
+    assert page.width > 100
+    assert _ink_count(page.pages[0]) > 40
+    cleared = client.post("/api/style-default", json={"style": "school-neat"})
+    assert cleared.status_code == 200
+    assert cleared.json()["default"] == "school-neat"
+    assert cleared.json()["user_default"] == ""
+    again = StyleLibrary(data_dir=tmp_path)
+    assert again.default_id == "school-neat"
+    assert again.user_default_id == ""
+    assert (tmp_path / "handwriting" / f"{body['id']}.json").is_file()
+    assert again.resolve("", body["id"]).id == body["id"]
+
+
 LONG_PARAGRAPH = (
     "Pack my box with five dozen liquor jugs. The quick brown fox jumps "
     "over the lazy dog, then sits down to finish the rest of the homework."

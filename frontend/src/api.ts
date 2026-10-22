@@ -34,6 +34,8 @@ export type StyleInfo = {
   characters: number;
   ink: string;
   note: string;
+  message?: string;
+  default?: boolean;
 };
 
 export type Catalogue = {
@@ -45,8 +47,36 @@ export type Catalogue = {
 
 export type StyleCatalogue = {
   default: string;
+  user_default?: string;
   styles: StyleInfo[];
 };
+
+export type Transcript = {
+  text: string;
+  whisper_language: string;
+  language_id: string;
+  language_name: string;
+  direction: "ltr" | "rtl";
+  template: string;
+  model: string;
+};
+
+export type VoiceStatus = {
+  ready: boolean;
+  private: boolean;
+  model: string;
+  device?: string;
+  compute?: string;
+  note?: string;
+  error?: string;
+};
+
+const PRESET_STYLES = new Set(["qalam-fonts", "school-neat", "cursive-letter", "quick-notes", "print-notes"]);
+
+export function styleFields(styleId: string): { style: string; handwriting_id: string } {
+  if (PRESET_STYLES.has(styleId)) return { style: styleId, handwriting_id: "" };
+  return { style: "", handwriting_id: styleId };
+}
 
 export type Preview = {
   pages: string[];
@@ -151,6 +181,39 @@ export async function uploadHandwriting(file: File, transcript: string, mode: "n
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(typeof detail.detail === "string" ? detail.detail : "Could not read that handwriting.");
+  }
+  return response.json();
+}
+
+export async function setDefaultStyle(style: string): Promise<{ default: string; user_default: string }> {
+  const response = await fetch("/api/style-default", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ style }),
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof detail.detail === "string" ? detail.detail : "Could not change the default handwriting.");
+  }
+  return response.json();
+}
+
+export async function fetchVoice(): Promise<VoiceStatus> {
+  const response = await fetch("/api/voice");
+  if (!response.ok) {
+    throw new Error("The local Qalam renderer is not running.");
+  }
+  return response.json();
+}
+
+export async function transcribeAudio(file: File, language = ""): Promise<Transcript> {
+  const body = new FormData();
+  body.append("file", file, file.name || "recording.webm");
+  body.append("language", language);
+  const response = await fetch("/api/transcribe", { method: "POST", body });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(typeof detail.detail === "string" ? detail.detail : "Could not transcribe that recording.");
   }
   return response.json();
 }

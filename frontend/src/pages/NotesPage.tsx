@@ -6,12 +6,16 @@ import {
   fetchCatalogue,
   fetchPreview,
   fetchStyles,
+  setDefaultStyle,
+  styleFields,
   uploadHandwriting,
   uploadPagePhoto,
   type Catalogue,
   type Language,
   type StyleInfo,
 } from "../api";
+
+const STYLE_KEY = "qalam.defaultStyle";
 
 export function NotesPage() {
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
@@ -21,7 +25,7 @@ export function NotesPage() {
   const [template, setTemplate] = useState("four-line");
   const [ink, setInk] = useState("sample");
   const [styleId, setStyleId] = useState("school-neat");
-  const [handwritingId, setHandwritingId] = useState("");
+  const [userDefaultId, setUserDefaultId] = useState("");
   const [handwritingNote, setHandwritingNote] = useState("");
   const [transcript, setTranscript] = useState("");
   const [filledSheet, setFilledSheet] = useState(false);
@@ -54,7 +58,15 @@ export function NotesPage() {
       .then(([data, styleData]) => {
         setCatalogue(data);
         setStyles(styleData.styles);
-        setStyleId(styleData.default || "school-neat");
+        const chosen = styleData.default || "school-neat";
+        setStyleId(chosen);
+        setUserDefaultId(styleData.user_default || "");
+        if (styleData.user_default) setHandwritingNote("Your handwriting is now the default");
+        try {
+          localStorage.setItem(STYLE_KEY, chosen);
+        } catch {
+          /* the API copy is the one that survives a restart */
+        }
         const english = data.languages.find((item) => item.id === "en") ?? data.languages[0];
         setLanguageId(english.id);
         setTemplate(english.recommended[0] ?? "single-ruled");
@@ -82,8 +94,7 @@ export function NotesPage() {
           ink,
           name,
           date,
-          style: styleId === "upload" ? "" : styleId,
-          handwriting_id: styleId === "upload" ? handwritingId : "",
+          ...styleFields(styleId),
           page_photo_id: pagePhotoId,
         },
         controller.signal,
@@ -106,7 +117,7 @@ export function NotesPage() {
       window.clearTimeout(handle);
       controller.abort();
     };
-  }, [catalogue, language, text, template, ink, name, date, styleId, handwritingId, pagePhotoId]);
+  }, [catalogue, language, text, template, ink, name, date, styleId, pagePhotoId]);
 
   function chooseLanguage(next: Language) {
     const previous = language;
@@ -128,8 +139,7 @@ export function NotesPage() {
       ink,
       name,
       date,
-      style: styleId === "upload" ? "" : styleId,
-      handwriting_id: styleId === "upload" ? handwritingId : "",
+      ...styleFields(styleId),
       page_photo_id: pagePhotoId,
     };
   }
@@ -163,14 +173,38 @@ export function NotesPage() {
     setPreviewError(null);
     try {
       const style = await uploadHandwriting(file, transcript, filledSheet ? "template" : "notes");
-      setHandwritingId(style.id);
-      setHandwritingNote(style.note || `${style.characters} characters, ${style.letters} shapes.`);
-      setStyleId("upload");
+      const fresh = await fetchStyles();
+      setStyles(fresh.styles);
+      setStyleId(style.id);
+      setUserDefaultId(fresh.user_default || style.id);
+      setHandwritingNote(style.message || "Your handwriting is now the default");
+      try {
+        localStorage.setItem(STYLE_KEY, style.id);
+      } catch {
+        /* the saved file in the data directory is the source of truth */
+      }
       setInk("sample");
     } catch (error) {
       setPreviewError(error instanceof Error ? error.message : "Could not read that handwriting.");
     } finally {
       setUploading(null);
+    }
+  }
+
+  async function useSchoolNotes() {
+    setPreviewError(null);
+    try {
+      const result = await setDefaultStyle("school-neat");
+      setUserDefaultId(result.user_default || "");
+      setStyleId(result.default || "school-neat");
+      setHandwritingNote("");
+      try {
+        localStorage.setItem(STYLE_KEY, result.default || "school-neat");
+      } catch {
+        /* the data directory already has the preset */
+      }
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Could not change the default handwriting.");
     }
   }
 
@@ -235,11 +269,10 @@ export function NotesPage() {
             onChange={(event) => {
               const next = event.target.value;
               setStyleId(next);
-              if (next !== "upload" && next !== "qalam-fonts") setInk("sample");
-              if (next === "qalam-fonts" && ink === "sample") setInk("blue");
+              if (next === "qalam-fonts") setInk("blue");
+              else setInk("sample");
             }}
           >
-            {handwritingId && <option value="upload">My handwriting</option>}
             {styles.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
@@ -247,11 +280,16 @@ export function NotesPage() {
             ))}
           </select>
         </label>
+        {handwritingNote && <p className="confirm">{handwritingNote}</p>}
         <p className="note">
-          {styleId === "upload"
-            ? handwritingNote
-            : styles.find((item) => item.id === styleId)?.description}
+          {styles.find((item) => item.id === styleId)?.note ||
+            styles.find((item) => item.id === styleId)?.description}
         </p>
+        {userDefaultId && (
+          <button className="quiet" type="button" onClick={() => void useSchoolNotes()}>
+            Use Neat school notes
+          </button>
+        )}
 
         <fieldset>
           <legend>Your handwriting</legend>
@@ -389,7 +427,7 @@ export function NotesPage() {
                 style={{
                   background:
                     item.id === "sample"
-                      ? styles.find((style) => style.id === (styleId === "upload" ? "" : styleId))?.ink || item.hex
+                      ? styles.find((style) => style.id === styleId)?.ink || item.hex
                       : item.hex,
                 }}
                 aria-label={item.name}
@@ -410,7 +448,7 @@ export function NotesPage() {
           </button>
         </div>
         <p className="fine">
-          Rendered on this computer. A handwriting photo and a page photo stay in this session. Nothing is sent away.
+          Rendered on this computer. An uploaded handwriting sample is saved here and becomes the default for new pages. Nothing is sent away.
         </p>
       </form>
 

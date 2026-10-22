@@ -51,7 +51,8 @@ python3 -m qalam.cli --language ur --template single-ruled --out page.png
 | `backend/fonts/` | The OFL font files, `OFL.txt`, and `NOTICE.md`. |
 | `backend/qalam/renderer/` | Shaping, jitter, notebook templates, and the A4 page. |
 | `backend/qalam/main.py` | The local HTTP API. |
-| `frontend/src/` | The Notes page and the Voice placeholder. |
+| `backend/qalam/voice.py` | Local Whisper transcription for the Voice page. |
+| `frontend/src/` | The Notes page and the Voice page. |
 
 `NotebookRenderer.render` is the function the API calls. It delegates to `FontHandwritingRenderer` for the bundled faces, and to the contour composer for a handwriting sample. A one-shot model should replace the composer and keep `render(RenderRequest) -> RenderResult` in `backend/qalam/models.py`.
 

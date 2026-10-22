@@ -6,7 +6,7 @@ Qalam (قلم, a pen) turns a lesson into a notebook page. You type or paste the
 
 It runs on the school computer. Nothing is uploaded. A MacBook Air with 8 GB of memory is enough.
 
-This first version is the text path: typed notes, a live page, and a PDF. Voice comes next. Whisper will transcribe on the same machine, and the page you already see will be the page it writes.
+You can type the lesson, or speak it. Whisper transcribes on the same machine, and the page you already see is the page it writes.
 
 ![English four-line copy page](samples/english-four-line.png)
 
@@ -20,10 +20,9 @@ This first version is the text path: typed notes, a live page, and a PDF. Voice 
 - Download a multi-page A4 PDF, or a PNG of the page.
 - Pick a handwriting style. The default is the neat school hand. Change it with one line in [`backend/qalam/styles/config.py`](backend/qalam/styles/config.py): `DEFAULT_STYLE_ID`.
 - Upload a photo of your own page. Qalam straightens it, finds the ruled lines, and writes on the empty ones. A full page is left as it is.
-- Upload a handwriting sample, or fill the printed template sheet, and new text is set from that hand.
+- Upload a handwriting sample, or fill the printed template sheet, and new text is set from that hand. The upload becomes your default immediately, for Notes, Voice, and PDF, and it is kept in `~/.local/share/qalam`.
+- Record a lesson, or upload an audio file. Whisper transcribes it on this computer and the notebook writes the page.
 - Add a language by adding a font and a block of config. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-The Voice page is a placeholder. Recording and transcription are the next step, on purpose: the notebook renderer is the part every later feature writes through.
 
 ## Handwriting styles
 
@@ -45,6 +44,8 @@ The page can be set in a bundled font, or in a style measured from a photograph.
 
 ![Black print notes](samples/print-notes.png)
 
+An uploaded sample is saved on this computer and selected for every new page until you choose **Use Neat school notes**. The preset itself stays the one line in `config.py`; your hand is a file next to it, not a change to that line.
+
 **What quality to expect.** A photo of ordinary notes does not give clean, separable letters, especially when the writing is joined. Qalam still cuts the photo into contours and stores them, and it measures slant, x-height, letter spacing, stroke width, and ink colour. Those numbers tune the fallback font: the page is set in the closest bundled handwriting face, in the sample's ink, with the slant leaning the jitter. That is an honest limit of a CPU pipeline on an 8 GB machine, not a neural one-shot model.
 
 The reliable way to use your own letters is the **handwriting sheet**. Print it, write one character in each box, and photograph it. Each box is one glyph. Letters are normalised to one shared x-height and one baseline, by their class: x-height letters, ascenders, and descenders. A contour that is the wrong size, a merged blob, or a piece of the box is dropped, and that character is set from the bundled font at the same size.
@@ -62,6 +63,20 @@ Leave the paper blank and you get a white A4 sheet with the usual rules. Upload 
 ![A page that is already full, so nothing new is written](samples/on-your-page-occupied.png)
 
 The preset photographs live in [`backend/assets/handwriting-samples/`](backend/assets/handwriting-samples/README.md), separate from the fonts. They may have come from the internet. Replace them with samples the maintainer owns before a public release if the licence is unclear, then run `python3 scripts/build_presets.py`.
+
+## Voice
+
+On the Voice page, press **Record** and speak, then **Stop**. A live waveform shows that the microphone is open. You can also upload a wav, mp3, m4a, ogg, or webm file. The transcript appears in an editable box. Whisper picks the language, Qalam maps it onto the notebook's language and paper (Chinese becomes the simplified-Chinese setting, Punjabi becomes Gurmukhi unless you chose Shahmukhi yourself, Filipino comes from Whisper's Tagalog code), and the same handwriting renderer writes the page. Download the A4 PDF from there.
+
+Speech stays on this computer. The engine is [faster-whisper](https://github.com/SYSTRAN/faster-whisper), which is Whisper running through CTranslate2. It uses one CPU thread at int8, so an 8 GB MacBook Air M1 can keep the browser open beside it, and a short recording is not dropped or repeated. The default model is the multilingual **base** (about 150 MB). The first transcription downloads it into `~/.cache/qalam/whisper`. Later runs are offline.
+
+```bash
+# optional, before you start the API
+export QALAM_WHISPER_MODEL=base   # tiny, base, or small
+export QALAM_WHISPER_DIR="$HOME/.cache/qalam/whisper"
+```
+
+`tiny` is faster and less accurate. `small` is the better choice when the machine has room. English-only weights (names ending in `.en`) are refused, because the notebook is multilingual. ffmpeg has to be installed (`brew install ffmpeg` on a Mac) so a browser recording can be turned into 16 kHz mono audio. `pip install -r requirements.txt` installs faster-whisper; no compiler is required.
 
 ![Urdu in Nastaliq on ruled paper](samples/urdu-single-ruled.png)
 
@@ -136,6 +151,7 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+# Voice also needs ffmpeg: brew install ffmpeg
 python3 -m uvicorn qalam.main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -159,12 +175,12 @@ The Python packages publish macOS arm64 wheels (`uharfbuzz`, `freetype-py`, `Pil
 
 ## How it is built
 
-The browser is a small React app. The renderer is a Python service, because the next piece is local speech-to-text and because shaping has to be HarfBuzz.
+The browser is a small React app. The renderer is a Python service, so local speech-to-text and HarfBuzz shaping sit next to each other.
 
 ```mermaid
 flowchart LR
   notes[Notes page] --> api[FastAPI]
-  voice[Voice page, next] --> api
+  voice[Voice page] --> api
   api --> renderer[HandwritingRenderer]
   renderer --> fonts[Bundled fonts]
   renderer --> clone[Photo contours]
@@ -180,7 +196,6 @@ Fonts are stored in the repo under the SIL Open Font License so the app works wi
 
 ## Roadmap
 
-- Voice, with Whisper through whisper.cpp, on this computer. Audio is not uploaded.
 - A one-shot handwriting model behind the same renderer interface, so a single sample can synthesise strokes instead of cutting contours out of a photo. The contour composer is the stand-in that model would replace.
 - A stroke-synthesis engine for the bundled faces, so the writing varies like a hand instead of a font.
 - More paper: dotted tracing, graph, Urdu copy lines, and a worksheet header.

@@ -320,6 +320,37 @@ select {
 }
 .mic em { font-style: normal; font-size: 0.75rem; }
 .mic-dot { width: 18px; height: 18px; border-radius: 50%; background: #c9b8a4; }
+.panel .mic {
+  flex-direction: row;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0.65rem 1.1rem;
+  border-radius: 999px;
+  align-self: flex-start;
+  gap: 0.55rem;
+  color: var(--ink);
+}
+.mic.live {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.mic.live .mic-dot { background: var(--accent); }
+.voice-title {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 1.8rem;
+  margin: 0;
+}
+.wave {
+  width: 100%;
+  height: 72px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.confirm { margin: 0; color: var(--accent); font-size: 0.92rem; }
 .steps { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: 0.8rem; }
 .steps li { display: grid; grid-template-columns: auto 1fr; gap: 0.7rem; }
 .steps span {
