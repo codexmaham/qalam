@@ -1,0 +1,12 @@
+services:
+  qalam:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - qalam-data:/root/.local/share/qalam
+      - qalam-whisper:/root/.cache/qalam
+
+volumes:
+  qalam-data:
+  qalam-whisper:

@@ -1,0 +1,686 @@
+# Qalam language registry.
+# Add a language by adding a font file under fonts/ and a block below.
+# See CONTRIBUTING.md, section "Add a language".
+
+[fonts.caveat]
+file = "Caveat-wght.ttf"
+family = "Caveat"
+style = "handwriting"
+jitter = "glyph"
+jitter_amount = 1.0
+weight = 580
+line_mm = 10.0
+body_ratio = 0.70
+scripts = ["Latn", "Cyrl"]
+note = "Pen handwriting for Latin, with Cyrillic as well."
+
+[fonts.patrick-hand]
+file = "PatrickHand-Regular.ttf"
+family = "Patrick Hand"
+style = "handwriting"
+jitter = "glyph"
+jitter_amount = 0.85
+line_mm = 10.0
+body_ratio = 0.66
+scripts = ["Latn"]
+note = "Handwriting face with full Vietnamese diacritics."
+
+[fonts.bad-script]
+file = "BadScript-Regular.ttf"
+family = "Bad Script"
+style = "handwriting"
+jitter = "glyph"
+jitter_amount = 0.4
+line_mm = 10.5
+body_ratio = 0.64
+scripts = ["Cyrl", "Latn"]
+note = "Cursive Cyrillic handwriting."
+
+[fonts.kalam]
+file = "Kalam-Regular.ttf"
+family = "Kalam"
+style = "handwriting"
+jitter = "cluster"
+jitter_amount = 0.7
+line_mm = 11.5
+body_ratio = 0.58
+scripts = ["Deva", "Latn"]
+note = "Devanagari handwriting."
+
+[fonts.aref-ruqaa-ink]
+file = "ArefRuqaaInk-Regular.ttf"
+family = "Aref Ruqaa Ink"
+style = "handwriting"
+jitter = "joining"
+jitter_amount = 0.8
+line_mm = 14.5
+body_ratio = 0.48
+scripts = ["Arab"]
+note = "Ruqʿah handwriting for Arabic and Persian."
+
+[fonts.gulzar]
+file = "Gulzar-Regular.ttf"
+family = "Gulzar"
+style = "handwriting"
+jitter = "joining"
+jitter_amount = 0.55
+line_mm = 18.0
+body_ratio = 0.40
+scripts = ["Arab"]
+note = "Nastaliq, the everyday handwriting style for Urdu and Shahmukhi."
+
+[fonts.lateef]
+file = "Lateef-Regular.ttf"
+family = "Lateef"
+style = "text"
+jitter = "joining"
+jitter_amount = 0.45
+line_mm = 12.0
+body_ratio = 0.58
+scripts = ["Arab"]
+note = "Naskh text face. No open handwriting font yet covers Pashto and Sindhi."
+
+[fonts.mukta-mahee]
+file = "MuktaMahee-Regular.ttf"
+family = "Mukta Mahee"
+style = "text"
+jitter = "cluster"
+jitter_amount = 0.45
+line_mm = 11.0
+body_ratio = 0.60
+scripts = ["Guru", "Latn"]
+note = "Humanist Gurmukhi. No widely used open handwriting face for this script yet."
+
+[fonts.galada]
+file = "Galada-Regular.ttf"
+family = "Galada"
+style = "handwriting"
+jitter = "cluster"
+jitter_amount = 0.35
+line_mm = 12.0
+body_ratio = 0.58
+scripts = ["Beng", "Latn"]
+note = "Casual Bengali brush face."
+
+[fonts.kavivanar]
+file = "Kavivanar-Regular.ttf"
+family = "Kavivanar"
+style = "handwriting"
+jitter = "cluster"
+jitter_amount = 0.55
+line_mm = 11.0
+body_ratio = 0.60
+scripts = ["Taml", "Latn"]
+note = "Tamil handwriting."
+
+[fonts.akaya-telivigala]
+file = "AkayaTelivigala-Regular.ttf"
+family = "Akaya Telivigala"
+style = "handwriting"
+jitter = "cluster"
+jitter_amount = 0.45
+line_mm = 12.0
+body_ratio = 0.56
+scripts = ["Telu", "Latn"]
+note = "Casual Telugu handwritten face."
+
+[fonts.mukta-vaani]
+file = "MuktaVaani-Regular.ttf"
+family = "Mukta Vaani"
+style = "text"
+jitter = "cluster"
+jitter_amount = 0.4
+line_mm = 11.0
+body_ratio = 0.60
+scripts = ["Gujr", "Latn"]
+note = "Humanist Gujarati. No open handwriting face for this script yet."
+
+[fonts.sriracha]
+file = "Sriracha-Regular.ttf"
+family = "Sriracha"
+style = "handwriting"
+jitter = "cluster"
+jitter_amount = 0.6
+line_mm = 11.5
+body_ratio = 0.58
+scripts = ["Thai", "Latn"]
+note = "Thai handwriting."
+
+[fonts.zcool-kuaile]
+file = "ZCOOLKuaiLe-Regular.ttf"
+family = "ZCOOL KuaiLe"
+style = "handwriting"
+jitter = "square"
+jitter_amount = 0.55
+line_mm = 12.5
+body_ratio = 0.62
+scripts = ["Hani", "Latn"]
+note = "Simplified Chinese handwriting (GB2312 coverage)."
+
+[fonts.klee-one]
+file = "KleeOne-Regular.ttf"
+family = "Klee One"
+style = "handwriting"
+jitter = "square"
+jitter_amount = 0.4
+line_mm = 12.0
+body_ratio = 0.62
+scripts = ["Hani", "Hira", "Kana", "Latn"]
+note = "Japanese textbook handwriting."
+
+[fonts.nanum-pen]
+file = "NanumPenScript-Regular.ttf"
+family = "Nanum Pen Script"
+style = "handwriting"
+jitter = "square"
+jitter_amount = 0.65
+line_mm = 11.0
+body_ratio = 0.70
+scripts = ["Hang", "Latn"]
+note = "Korean pen handwriting, with the full Hangul syllable set."
+
+[[languages]]
+id = "en"
+name = "English"
+native = "English"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = """Speak it. See it handwritten. Print it.
+
+Today the class wrote this page by talking, and the notebook did the rest. The quick brown fox jumps over the lazy dog."""
+
+[[languages]]
+id = "es"
+name = "Spanish"
+native = "Español"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "El saber es una luz que cabe en una página escrita a mano."
+
+[[languages]]
+id = "fr"
+name = "French"
+native = "Français"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Apprendre, c'est ouvrir une page écrite à la main."
+
+[[languages]]
+id = "de"
+name = "German"
+native = "Deutsch"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Die Klasse schreibt heute mit der Hand. Wissen passt auf eine Seite."
+
+[[languages]]
+id = "pt"
+name = "Portuguese"
+native = "Português"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "A educação cabe numa página escrita à mão."
+
+[[languages]]
+id = "it"
+name = "Italian"
+native = "Italiano"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Il sapere è una luce che sta in una pagina scritta a mano."
+
+[[languages]]
+id = "tr"
+name = "Turkish"
+native = "Türkçe"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Bilgi, bir sayfaya sığan ışıktır."
+
+[[languages]]
+id = "id"
+name = "Indonesian"
+native = "Bahasa Indonesia"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Ilmu adalah cahaya yang muat di selembar kertas."
+
+[[languages]]
+id = "vi"
+name = "Vietnamese"
+native = "Tiếng Việt"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "patrick-hand"
+fallbacks = ["caveat"]
+recommended = ["four-line", "single-ruled"]
+sample = "Học, học nữa, học mãi."
+
+[[languages]]
+id = "nl"
+name = "Dutch"
+native = "Nederlands"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Leren is een geschenk voor het leven."
+
+[[languages]]
+id = "pl"
+name = "Polish"
+native = "Polski"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Nauka jest światłem."
+
+[[languages]]
+id = "sv"
+name = "Swedish"
+native = "Svenska"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Kunskap är en skatt."
+
+[[languages]]
+id = "cs"
+name = "Czech"
+native = "Čeština"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Vědění je světlo."
+
+[[languages]]
+id = "ro"
+name = "Romanian"
+native = "Română"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Învățătura este o lumină."
+
+[[languages]]
+id = "hu"
+name = "Hungarian"
+native = "Magyar"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "A tudás fény, amely egy lapra fér."
+
+[[languages]]
+id = "ms"
+name = "Malay"
+native = "Bahasa Melayu"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Ilmu adalah pelita hidup."
+
+[[languages]]
+id = "sw"
+name = "Swahili"
+native = "Kiswahili"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Elimu ni mwanga wa maisha."
+
+[[languages]]
+id = "fil"
+name = "Filipino"
+native = "Filipino"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "Ang kaalaman ay liwanag."
+
+[[languages]]
+id = "ca"
+name = "Catalan"
+native = "Català"
+direction = "ltr"
+script = "Latn"
+family = "Latin"
+font = "caveat"
+fallbacks = ["patrick-hand"]
+recommended = ["four-line", "single-ruled"]
+sample = "El saber és una llum."
+
+[[languages]]
+id = "ru"
+name = "Russian"
+native = "Русский"
+direction = "ltr"
+script = "Cyrl"
+family = "Cyrillic"
+font = "bad-script"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "Ученье — свет, а неученье — тьма."
+
+[[languages]]
+id = "uk"
+name = "Ukrainian"
+native = "Українська"
+direction = "ltr"
+script = "Cyrl"
+family = "Cyrillic"
+font = "bad-script"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "Знання — це світло."
+
+[[languages]]
+id = "bg"
+name = "Bulgarian"
+native = "Български"
+direction = "ltr"
+script = "Cyrl"
+family = "Cyrillic"
+font = "bad-script"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "Знанието е светлина."
+
+[[languages]]
+id = "sr"
+name = "Serbian"
+native = "Српски"
+direction = "ltr"
+script = "Cyrl"
+family = "Cyrillic"
+font = "bad-script"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "Знање је светлост."
+
+[[languages]]
+id = "ar"
+name = "Arabic"
+native = "العربية"
+direction = "rtl"
+script = "Arab"
+family = "Arabic"
+font = "aref-ruqaa-ink"
+fallbacks = ["lateef", "caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "العلم نور والجهل ظلام."
+
+[[languages]]
+id = "fa"
+name = "Persian"
+native = "فارسی"
+direction = "rtl"
+script = "Arab"
+family = "Arabic"
+font = "aref-ruqaa-ink"
+fallbacks = ["lateef", "gulzar", "caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "دانایی توانایی است."
+
+[[languages]]
+id = "ur"
+name = "Urdu"
+native = "اردو"
+direction = "rtl"
+script = "Arab"
+family = "Arabic"
+font = "gulzar"
+fallbacks = ["lateef", "aref-ruqaa-ink", "caveat"]
+recommended = ["single-ruled"]
+sample = "علم ایک روشنی ہے جو ہر دل تک پہنچتی ہے۔"
+
+[[languages]]
+id = "pa-arab"
+name = "Punjabi (Shahmukhi)"
+native = "پنجابی"
+direction = "rtl"
+script = "Arab"
+family = "Arabic"
+font = "gulzar"
+fallbacks = ["lateef", "caveat"]
+recommended = ["single-ruled"]
+sample = "پنجابی ساڈی زبان اے۔"
+
+[[languages]]
+id = "ps"
+name = "Pashto"
+native = "پښتو"
+direction = "rtl"
+script = "Arab"
+family = "Arabic"
+font = "lateef"
+fallbacks = ["gulzar", "caveat"]
+recommended = ["single-ruled"]
+sample = "پوهه رڼا ده."
+
+[[languages]]
+id = "sd"
+name = "Sindhi"
+native = "سنڌي"
+direction = "rtl"
+script = "Arab"
+family = "Arabic"
+font = "lateef"
+fallbacks = ["gulzar", "caveat"]
+recommended = ["single-ruled"]
+sample = "علم حاصل ڪرڻ وڏو خزانو آهي."
+
+[[languages]]
+id = "hi"
+name = "Hindi"
+native = "हिन्दी"
+direction = "ltr"
+script = "Deva"
+family = "Devanagari"
+font = "kalam"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "विद्या ददाति विनयम्। आज कक्षा में हमने अपनी बात लिखावट में देखी।"
+
+[[languages]]
+id = "mr"
+name = "Marathi"
+native = "मराठी"
+direction = "ltr"
+script = "Deva"
+family = "Devanagari"
+font = "kalam"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "विद्या हेच खरे धन आहे."
+
+[[languages]]
+id = "ne"
+name = "Nepali"
+native = "नेपाली"
+direction = "ltr"
+script = "Deva"
+family = "Devanagari"
+font = "kalam"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "विद्या सबैभन्दा ठूलो धन हो।"
+
+[[languages]]
+id = "sa"
+name = "Sanskrit"
+native = "संस्कृतम्"
+direction = "ltr"
+script = "Deva"
+family = "Devanagari"
+font = "kalam"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "विद्या ददाति विनयम्।"
+
+[[languages]]
+id = "pa-guru"
+name = "Punjabi (Gurmukhi)"
+native = "ਪੰਜਾਬੀ"
+direction = "ltr"
+script = "Guru"
+family = "Gurmukhi"
+font = "mukta-mahee"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "ਵਿਦਿਆ ਵੱਡੀ ਦੌਲਤ ਹੈ।"
+
+[[languages]]
+id = "bn"
+name = "Bengali"
+native = "বাংলা"
+direction = "ltr"
+script = "Beng"
+family = "Bengali"
+font = "galada"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "শিক্ষাই জাতির মেরুদণ্ড।"
+
+[[languages]]
+id = "ta"
+name = "Tamil"
+native = "தமிழ்"
+direction = "ltr"
+script = "Taml"
+family = "Tamil"
+font = "kavivanar"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "கல்வி சிறந்த செல்வம்."
+
+[[languages]]
+id = "te"
+name = "Telugu"
+native = "తెలుగు"
+direction = "ltr"
+script = "Telu"
+family = "Telugu"
+font = "akaya-telivigala"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "విద్య గొప్ప సంపద."
+
+[[languages]]
+id = "gu"
+name = "Gujarati"
+native = "ગુજરાતી"
+direction = "ltr"
+script = "Gujr"
+family = "Gujarati"
+font = "mukta-vaani"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "વિદ્યા એ મોટી સંપત્તિ છે."
+
+[[languages]]
+id = "th"
+name = "Thai"
+native = "ไทย"
+direction = "ltr"
+script = "Thai"
+family = "Thai"
+font = "sriracha"
+fallbacks = ["caveat"]
+recommended = ["single-ruled", "four-line"]
+sample = "ความรู้คือแสงสว่าง"
+
+[[languages]]
+id = "zh-hans"
+name = "Chinese (Simplified)"
+native = "简体中文"
+direction = "ltr"
+script = "Hani"
+family = "Chinese"
+font = "zcool-kuaile"
+fallbacks = ["klee-one", "caveat"]
+recommended = ["tianzige", "square-grid", "single-ruled"]
+sample = "学而时习之，不亦说乎。今天我们把听到的话写成了笔记。"
+
+[[languages]]
+id = "ja"
+name = "Japanese"
+native = "日本語"
+direction = "ltr"
+script = "Jpan"
+family = "Japanese"
+font = "klee-one"
+fallbacks = ["zcool-kuaile", "caveat"]
+recommended = ["square-grid", "single-ruled", "tianzige"]
+sample = "学びは明日への贈り物です。"
+
+[[languages]]
+id = "ko"
+name = "Korean"
+native = "한국어"
+direction = "ltr"
+script = "Hang"
+family = "Korean"
+font = "nanum-pen"
+fallbacks = ["caveat"]
+recommended = ["square-grid", "single-ruled"]
+sample = "배움은 마음을 여는 열쇠입니다."
