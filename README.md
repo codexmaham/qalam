@@ -12,6 +12,23 @@ It runs on the school computer. Nothing is uploaded. A MacBook Air with 8 GB of 
 
 You can type the lesson, or speak it. Whisper transcribes on the same machine, and the page you already see is the page it writes.
 
+## Demo
+
+![Qalam demo](docs/demo/qalam-demo.gif)
+
+Type a lesson, switch the language, speak it, and print the page. The loop above is about twenty seconds.
+
+<!--
+Full demo video (MP4). It is not stored in this repository.
+Upload the file with GitHub's editor, then replace this comment with the attachment:
+
+![Qalam demo](https://github.com/user-attachments/assets/REPLACE_ME)
+-->
+
+![Urdu, written right to left](docs/demo/notes-urdu.png)
+
+![A spoken lesson, written on the page](docs/demo/voice-homework.png)
+
 ![English four-line copy page](samples/english-four-line.png)
 
 ## What you can do today
