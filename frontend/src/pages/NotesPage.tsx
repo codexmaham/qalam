@@ -127,7 +127,7 @@ export function NotesPage() {
         .finally(() => {
           if (id === requestId.current) setBusy(false);
         });
-    }, 120);
+    }, 280);
     return () => {
       window.clearTimeout(handle);
       controller.abort();
@@ -327,41 +327,6 @@ export function NotesPage() {
           </button>
         )}
 
-        <label className="field grow">
-          <span>Text</span>
-          <textarea
-            value={text}
-            dir={language.direction}
-            lang={language.id}
-            rows={8}
-            placeholder="Paste a lesson, a list, a paragraph."
-            onChange={(event) => {
-              textWasSample.current = false;
-              setText(event.target.value);
-            }}
-          />
-        </label>
-        <div className="row-actions">
-          <button
-            className="quiet"
-            type="button"
-            onClick={() => {
-              setText(language.sample);
-              textWasSample.current = true;
-              setTrace(false);
-            }}
-          >
-            Use the {language.name} sample
-          </button>
-          <button className="quiet" type="button" onClick={() => void onPractice("letters")}>
-            Letter practice
-          </button>
-          <button className="quiet" type="button" onClick={() => void onPractice("words")}>
-            Word practice
-          </button>
-        </div>
-        <p className="note">The preview on the right updates as you type. # Heading, - bullet, --- rule, __word__ underline, x^2 and $1/2$.</p>
-
         <fieldset>
           <legend>Your handwriting</legend>
           <label className="file">
@@ -438,6 +403,41 @@ export function NotesPage() {
             </label>
           )}
         </fieldset>
+
+        <label className="field grow">
+          <span>Text</span>
+          <textarea
+            value={text}
+            dir={language.direction}
+            lang={language.id}
+            rows={8}
+            placeholder="Paste a lesson, a list, a paragraph."
+            onChange={(event) => {
+              textWasSample.current = false;
+              setText(event.target.value);
+            }}
+          />
+        </label>
+        <div className="row-actions">
+          <button
+            className="quiet"
+            type="button"
+            onClick={() => {
+              setText(language.sample);
+              textWasSample.current = true;
+              setTrace(false);
+            }}
+          >
+            Use the {language.name} sample
+          </button>
+          <button className="quiet" type="button" onClick={() => void onPractice("letters")}>
+            Letter practice
+          </button>
+          <button className="quiet" type="button" onClick={() => void onPractice("words")}>
+            Word practice
+          </button>
+        </div>
+        <p className="note"># Heading, - bullet, --- rule, __word__ underline, x^2 and $1/2$.</p>
 
         <div className="split three">
           <label>
@@ -559,11 +559,7 @@ export function NotesPage() {
         </p>
       </form>
 
-      <section className="stage" aria-label="Preview">
-        <div className="preview-head">
-          <strong>Preview</strong>
-          <span>{busy ? "Writing…" : "Updates as you type"}</span>
-        </div>
+      <section className="stage">
         <div className={busy ? "sheet busy" : "sheet"}>
           {pages[page] ? (
             <img

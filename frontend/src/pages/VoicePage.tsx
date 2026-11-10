@@ -106,7 +106,7 @@ export function VoicePage() {
         .finally(() => {
           if (id === requestId.current) setBusy(false);
         });
-    }, 120);
+    }, 280);
     return () => {
       window.clearTimeout(handle);
       controller.abort();
@@ -335,11 +335,7 @@ export function VoicePage() {
         </p>
       </form>
 
-      <section className="stage" aria-label="Preview">
-        <div className="preview-head">
-          <strong>Preview</strong>
-          <span>{busy || transcribing ? "Writing…" : text.trim() ? "Updates as you edit the transcript" : "The page appears as the words come in"}</span>
-        </div>
+      <section className="stage">
         <div className={busy || transcribing ? "sheet busy" : "sheet"}>
           {pages[0] ? (
             <img src={`data:image/png;base64,${pages[0]}`} alt={`${language.name} notebook from the recording`} />
