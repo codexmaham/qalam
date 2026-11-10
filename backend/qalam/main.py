@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import base64
 import io
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from qalam import __version__
@@ -267,14 +268,36 @@ def create_app(transcriber: WhisperTranscriber | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         return _transcript_body(result)
 
-    @app.get("/")
-    def root() -> dict:
+    @app.get("/", include_in_schema=False)
+    def root():
+        """The built notebook, or a short JSON note when the frontend is not built."""
+
+        page = _static_file("index.html")
+        if page is not None:
+            return FileResponse(page)
         return {
             "name": "Qalam",
             "tagline": "Speak it. See it handwritten. Print it.",
             "docs": "/docs",
             "ui": "http://127.0.0.1:5173",
         }
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def frontend(full_path: str):
+        """Static files from the build, and index.html for the client-side routes."""
+
+        if full_path == "api" or full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found")
+        page = _static_file(full_path)
+        if page is not None:
+            return FileResponse(page)
+        # A missing script should stay a 404. /voice has no file extension.
+        if Path(full_path).suffix:
+            raise HTTPException(status_code=404, detail="Not found")
+        index = _static_file("index.html")
+        if index is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        return FileResponse(index)
 
     return app
 
@@ -384,17 +407,30 @@ def _render(body: RenderIn, dpi: int, max_pages: int):
         raise HTTPException(status_code=500, detail=f"Render failed: {exc}") from exc
 
 
-def _mount_static(application: FastAPI) -> None:
-    import os
+def _static_root() -> Path | None:
+    """The built frontend, if it is on disk. `QALAM_STATIC` overrides the default."""
 
     raw = os.environ.get("QALAM_STATIC", "").strip()
     root = Path(raw) if raw else Path(__file__).resolve().parents[2] / "frontend" / "dist"
-    if not (root / "index.html").is_file():
-        return
-    from fastapi.staticfiles import StaticFiles
+    if (root / "index.html").is_file():
+        return root.resolve()
+    return None
 
-    application.mount("/", StaticFiles(directory=root, html=True), name="ui")
+
+def _static_file(relative: str) -> Path | None:
+    """A file inside the build directory, or None. Paths cannot escape the directory."""
+
+    root = _static_root()
+    if root is None or not relative or relative.startswith("/"):
+        return None
+    candidate = (root / relative).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    if candidate.is_file():
+        return candidate
+    return None
 
 
 app = create_app()
-_mount_static(app)

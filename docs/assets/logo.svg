@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="88" viewBox="0 0 360 88" role="img" aria-labelledby="title">
+  <title id="title">Qalam</title>
+  <g fill="#9d2c1c" transform="translate(2 16) scale(2.15)">
+    <path d="M8 25c5-.4 9.2-6.4 16-16.2-6.2 2-9.6 5-13.6 11.2C8.6 22.6 8 24 8 25z"/>
+    <path d="M15.5 18.5c1.4 1.8 2 3.4 1.7 5" fill="none" stroke="#9d2c1c" stroke-width="1.35" stroke-linecap="round"/>
+  </g>
+  <text x="76" y="62" font-family="Georgia, 'Iowan Old Style', Palatino, 'Palatino Linotype', serif" font-size="58" fill="#241c16">Qalam</text>
+</svg>
